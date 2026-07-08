@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .config import PromptRuntimeConfig
+from .models import PromptRenderRecord
+from .storage import immutable_path
+
+
+@dataclass
+class PromptTemplate:
+    template_id: str
+    version: str
+    role: str
+    required_variables: list[str]
+    output_schema: dict[str, Any]
+    safety_constraints: list[str]
+    body: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class PromptRegistry:
+    def __init__(self):
+        self._templates: dict[tuple[str, str], PromptTemplate] = {}
+
+    def register(self, template: PromptTemplate) -> None:
+        key = (template.template_id, template.version)
+        if key in self._templates:
+            raise ValueError(f"Duplicate prompt template: {template.template_id}@{template.version}")
+        self._templates[key] = template
+
+    def get(self, template_id: str, version: str) -> PromptTemplate:
+        try:
+            return self._templates[(template_id, version)]
+        except KeyError as exc:
+            raise KeyError(f"Prompt template not found: {template_id}@{version}") from exc
+
+    def render(self, template_id: str, version: str, variables: dict[str, Any]) -> PromptRenderRecord:
+        template = self.get(template_id, version)
+        missing = [name for name in template.required_variables if name not in variables]
+        if missing:
+            raise ValueError(f"Missing prompt variables: {', '.join(missing)}")
+        rendered = template.body
+        prepared_variables = dict(variables)
+        prepared_variables["safety_constraints"] = "\n".join(f"- {item}" for item in template.safety_constraints)
+        for name, value in prepared_variables.items():
+            rendered = rendered.replace("{{" + name + "}}", _stringify(value))
+        return PromptRenderRecord(
+            template_id=template.template_id,
+            version=template.version,
+            role=template.role,
+            variables=variables,
+            rendered=rendered,
+            output_schema=template.output_schema,
+            safety_constraints=template.safety_constraints,
+        )
+
+
+def default_prompt_registry() -> PromptRegistry:
+    registry = PromptRegistry()
+    for template in _builtin_templates():
+        registry.register(template)
+    return registry
+
+
+def render_default_prompt(
+    role: str, template_id: str, variables: dict[str, Any], config: PromptRuntimeConfig | None = None
+) -> PromptRenderRecord:
+    config = config or PromptRuntimeConfig()
+    registry = default_prompt_registry()
+    record = registry.render(template_id, config.default_version, variables)
+    if record.role != role:
+        raise ValueError(f"Template {template_id} is for role {record.role}, not {role}")
+    return record
+
+
+def persist_prompt(root: Path | str, record: PromptRenderRecord) -> Path:
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    path = immutable_path(root / f"{record.role}-{record.template_id.replace('.', '-')}-{record.id}.json")
+    path.write_text(json.dumps(record.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    record.artifact_path = str(path)
+    return path
+
+
+def _builtin_templates() -> list[PromptTemplate]:
+    common_safety = [
+        "Use local source or dependency evidence before reporting a finding.",
+        "CVE, MCP, and RAG context are contextual hints, not validation evidence.",
+        "Do not request live-target exploitation.",
+    ]
+    return [
+        PromptTemplate(
+            template_id="orchestrator.plan",
+            version="v1",
+            role="orchestrator",
+            required_variables=["repository_summary", "audit_scope"],
+            output_schema={
+                "type": "object",
+                "required": [
+                    "role",
+                    "action",
+                    "confidence",
+                    "rationale",
+                    "evidence_refs",
+                    "selected_actions",
+                    "requested_tools",
+                    "plan",
+                ],
+            },
+            safety_constraints=common_safety,
+            body=(
+                "You are the Orchestrator agent.\nRepository:\n{{repository_summary}}\n"
+                "Scope:\n{{audit_scope}}\nSafety:\n{{safety_constraints}}\nReturn JSON with key plan."
+                " Also include role, action, confidence, rationale, evidence_refs, selected_actions, and requested_tools."
+            ),
+        ),
+        PromptTemplate(
+            template_id="recon.summary",
+            version="v1",
+            role="recon",
+            required_variables=["repository_metadata", "intelligence_context", "memory_context"],
+            output_schema={
+                "type": "object",
+                "required": [
+                    "role",
+                    "action",
+                    "confidence",
+                    "rationale",
+                    "evidence_refs",
+                    "selected_actions",
+                    "requested_tools",
+                    "high_risk_areas",
+                ],
+            },
+            safety_constraints=common_safety,
+            body=(
+                "You are the Recon agent.\nMetadata:\n{{repository_metadata}}\n"
+                "Intelligence:\n{{intelligence_context}}\nMemory:\n{{memory_context}}\n"
+                "Safety:\n{{safety_constraints}}\nReturn JSON with high_risk_areas and dependency_concerns."
+                " Also include role, action, confidence, rationale, evidence_refs, selected_actions, and requested_tools."
+            ),
+        ),
+        PromptTemplate(
+            template_id="analysis.candidates",
+            version="v1",
+            role="analysis",
+            required_variables=["repository_summary", "tool_outputs", "memory_context", "intelligence_context"],
+            output_schema={
+                "type": "object",
+                "required": [
+                    "role",
+                    "action",
+                    "confidence",
+                    "rationale",
+                    "evidence_refs",
+                    "selected_actions",
+                    "requested_tools",
+                    "candidates",
+                ],
+                "properties": {"candidates": {"type": "array"}, "selected_actions": {"type": "array"}},
+            },
+            safety_constraints=common_safety,
+            body=(
+                "You are the Analysis agent.\nRepository:\n{{repository_summary}}\n"
+                "Tools:\n{{tool_outputs}}\nMemory citations:\n{{memory_context}}\n"
+                "Intelligence:\n{{intelligence_context}}\nSafety:\n{{safety_constraints}}\n"
+                "Return JSON with candidates plus role, action, confidence, rationale, evidence_refs, selected_actions, and requested_tools."
+            ),
+        ),
+        PromptTemplate(
+            template_id="verification.decision",
+            version="v1",
+            role="verification",
+            required_variables=["candidate_json", "evidence_summary"],
+            output_schema={
+                "type": "object",
+                "required": [
+                    "role",
+                    "action",
+                    "confidence",
+                    "rationale",
+                    "evidence_refs",
+                    "selected_actions",
+                    "requested_tools",
+                    "decisions",
+                ],
+                "properties": {"decisions": {"type": "array"}, "selected_actions": {"type": "array"}},
+            },
+            safety_constraints=common_safety
+            + ["Reject intelligence-only and memory-only findings without local evidence."],
+            body=(
+                "You are the Verification agent.\nCandidates:\n{{candidate_json}}\n"
+                "Evidence:\n{{evidence_summary}}\nSafety:\n{{safety_constraints}}\n"
+                "Return JSON with decisions plus role, action, confidence, rationale, evidence_refs, selected_actions, and requested_tools."
+            ),
+        ),
+    ]
+
+
+def _stringify(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, indent=2)

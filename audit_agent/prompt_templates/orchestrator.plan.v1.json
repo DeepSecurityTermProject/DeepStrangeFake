@@ -1,0 +1,11 @@
+{
+  "template_id": "orchestrator.plan",
+  "version": "v1",
+  "role": "orchestrator",
+  "required_variables": ["repository_summary", "audit_scope"],
+  "output_schema": {
+    "type": "object",
+    "required": ["role", "action", "confidence", "rationale", "evidence_refs", "selected_actions", "requested_tools", "plan"]
+  },
+  "safety_constraints": ["Use local evidence before reporting findings.", "Do not request live-target exploitation."]
+}

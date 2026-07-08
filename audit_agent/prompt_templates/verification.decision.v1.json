@@ -1,0 +1,11 @@
+{
+  "template_id": "verification.decision",
+  "version": "v1",
+  "role": "verification",
+  "required_variables": ["candidate_json", "evidence_summary"],
+  "output_schema": {
+    "type": "object",
+    "required": ["role", "action", "confidence", "rationale", "evidence_refs", "selected_actions", "requested_tools", "decisions"]
+  },
+  "safety_constraints": ["Reject intelligence-only and memory-only findings.", "Select explicit validation levels."]
+}

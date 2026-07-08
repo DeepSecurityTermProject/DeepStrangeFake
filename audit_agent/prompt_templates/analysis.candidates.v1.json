@@ -1,0 +1,11 @@
+{
+  "template_id": "analysis.candidates",
+  "version": "v1",
+  "role": "analysis",
+  "required_variables": ["repository_summary", "tool_outputs", "memory_context", "intelligence_context"],
+  "output_schema": {
+    "type": "object",
+    "required": ["role", "action", "confidence", "rationale", "evidence_refs", "selected_actions", "requested_tools", "candidates"]
+  },
+  "safety_constraints": ["Every candidate must cite local evidence.", "Memory and CVE context cannot validate a finding alone."]
+}

@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+runs/
+.coverage
+.env
+.env.*
+!.env.example
+external/cve-mcp-server/

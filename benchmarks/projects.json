@@ -1,0 +1,164 @@
+{
+  "targets": [
+    {
+      "name": "openvpn",
+      "source": "https://github.com/OpenVPN/openvpn.git",
+      "ref": "master",
+      "expected_language": "C",
+      "setup_notes": "Build-heavy target; default benchmark may run source-only analysis.",
+      "safety_constraints": ["no-live-target-validation"]
+    },
+    {
+      "name": "maccms-v10",
+      "source": "https://github.com/magicblack/maccms10.git",
+      "ref": "master",
+      "expected_language": "PHP",
+      "setup_notes": "Web application target suitable for route and sink analysis.",
+      "safety_constraints": ["local-only-poc"]
+    },
+    {
+      "name": "django",
+      "source": "https://github.com/django/django.git",
+      "ref": "main",
+      "expected_language": "Python",
+      "setup_notes": "Large Python web framework.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "flask",
+      "source": "https://github.com/pallets/flask.git",
+      "ref": "main",
+      "expected_language": "Python",
+      "setup_notes": "Python web framework.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "fastapi",
+      "source": "https://github.com/fastapi/fastapi.git",
+      "ref": "master",
+      "expected_language": "Python",
+      "setup_notes": "Python API framework.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "rails",
+      "source": "https://github.com/rails/rails.git",
+      "ref": "main",
+      "expected_language": "Ruby",
+      "setup_notes": "Ruby web framework.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "express",
+      "source": "https://github.com/expressjs/express.git",
+      "ref": "master",
+      "expected_language": "JavaScript",
+      "setup_notes": "Node.js web framework.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "strapi",
+      "source": "https://github.com/strapi/strapi.git",
+      "ref": "main",
+      "expected_language": "TypeScript",
+      "setup_notes": "Node.js CMS target.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "wordpress",
+      "source": "https://github.com/WordPress/WordPress.git",
+      "ref": "master",
+      "expected_language": "PHP",
+      "setup_notes": "PHP CMS target.",
+      "safety_constraints": ["local-only-poc"]
+    },
+    {
+      "name": "laravel",
+      "source": "https://github.com/laravel/framework.git",
+      "ref": "master",
+      "expected_language": "PHP",
+      "setup_notes": "PHP framework target.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "spring-framework",
+      "source": "https://github.com/spring-projects/spring-framework.git",
+      "ref": "main",
+      "expected_language": "Java",
+      "setup_notes": "Java framework target.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "jenkins",
+      "source": "https://github.com/jenkinsci/jenkins.git",
+      "ref": "master",
+      "expected_language": "Java",
+      "setup_notes": "Java server application.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "gitlab",
+      "source": "https://gitlab.com/gitlab-org/gitlab.git",
+      "ref": "master",
+      "expected_language": "Ruby",
+      "setup_notes": "Large GitLab target; likely source-only in coursework benchmark.",
+      "safety_constraints": ["source-analysis-first", "large-repository"]
+    },
+    {
+      "name": "grafana",
+      "source": "https://github.com/grafana/grafana.git",
+      "ref": "main",
+      "expected_language": "Go",
+      "setup_notes": "Go and TypeScript application.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "prometheus",
+      "source": "https://github.com/prometheus/prometheus.git",
+      "ref": "main",
+      "expected_language": "Go",
+      "setup_notes": "Go server target.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "kubernetes",
+      "source": "https://github.com/kubernetes/kubernetes.git",
+      "ref": "master",
+      "expected_language": "Go",
+      "setup_notes": "Very large Go project; source-only benchmark by default.",
+      "safety_constraints": ["source-analysis-first", "large-repository"]
+    },
+    {
+      "name": "openssl",
+      "source": "https://github.com/openssl/openssl.git",
+      "ref": "master",
+      "expected_language": "C",
+      "setup_notes": "C cryptography project.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "nginx",
+      "source": "https://github.com/nginx/nginx.git",
+      "ref": "master",
+      "expected_language": "C",
+      "setup_notes": "C web server project.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "redis",
+      "source": "https://github.com/redis/redis.git",
+      "ref": "unstable",
+      "expected_language": "C",
+      "setup_notes": "C database/server target.",
+      "safety_constraints": ["source-analysis-first"]
+    },
+    {
+      "name": "metabase",
+      "source": "https://github.com/metabase/metabase.git",
+      "ref": "master",
+      "expected_language": "Clojure",
+      "setup_notes": "Analytics application with web/API surfaces.",
+      "safety_constraints": ["source-analysis-first"]
+    }
+  ]
+}

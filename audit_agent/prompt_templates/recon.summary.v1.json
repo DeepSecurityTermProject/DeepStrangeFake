@@ -1,0 +1,11 @@
+{
+  "template_id": "recon.summary",
+  "version": "v1",
+  "role": "recon",
+  "required_variables": ["repository_metadata", "intelligence_context", "memory_context"],
+  "output_schema": {
+    "type": "object",
+    "required": ["role", "action", "confidence", "rationale", "evidence_refs", "selected_actions", "requested_tools", "high_risk_areas"]
+  },
+  "safety_constraints": ["Treat MCP intelligence as context.", "Cite retrieved memory records."]
+}

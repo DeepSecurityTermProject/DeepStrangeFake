@@ -1,0 +1,137 @@
+{
+  "llm": {
+    "provider": "mock",
+    "model": "deterministic-local",
+    "temperature": 0.0,
+    "local_model_endpoint": null,
+    "base_url": "https://api.openai.com/v1",
+    "api_key_env": "OPENAI_API_KEY",
+    "timeout_seconds": 30,
+    "retry_count": 2,
+    "max_tokens": 4096,
+    "token_budget": 200000,
+    "cost_budget_usd": null
+  },
+  "prompts": {
+    "default_version": "v1",
+    "template_dir": "audit_agent/prompt_templates"
+  },
+  "cve_mcp": {
+    "name": "mukul975/cve-mcp-server",
+    "enabled": true,
+    "command": ["cve-mcp-server"],
+    "working_dir": null,
+    "endpoint": null,
+    "env": {},
+    "timeout_seconds": 15,
+    "cache_policy": "per-run",
+    "query_budget": 50,
+    "degraded_mode": true,
+    "outbound_network": "configurable",
+    "allowed_tools": []
+  },
+  "mcp": {
+    "enabled": true,
+    "transport": "stdio",
+    "command": ["cve-mcp-server"],
+    "working_dir": null,
+    "env": {},
+    "timeout_seconds": 15,
+    "query_budget": 50,
+    "degraded_mode": true,
+    "outbound_network": "configurable",
+    "allowed_tools": []
+  },
+  "integration": {
+    "enabled": false,
+    "env_file": ".env",
+    "load_env_file": true,
+    "live_flag_env": "AUDIT_AGENT_RUN_INTEGRATION",
+    "artifact_dir": "integration",
+    "smoke_target": "fixtures/integration_smoke",
+    "smoke_cve_id": "CVE-2021-44228",
+    "llm_smoke_max_tokens": 128,
+    "safe_cve_mcp_tools": [
+      "lookup_cve",
+      "get_epss_score",
+      "check_kev",
+      "parse_cvss",
+      "scan_dependencies",
+      "check_package_vulns",
+      "calculate_risk_score",
+      "triage_cve"
+    ]
+  },
+  "tools": {
+    "default_timeout_seconds": 30,
+    "per_agent_budgets": {
+      "orchestrator": 20,
+      "recon": 60,
+      "analysis": 100,
+      "verification": 80,
+      "reporting": 20,
+      "validation": 20
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "mode": "lexical",
+    "index_dir": "memory",
+    "embedding_provider": "none",
+    "exclude_patterns": [".git/", "node_modules/", ".venv/", "runs/", "*.pem", "*.key"],
+    "redaction_patterns": ["secret", "password", "api_key", "token"]
+  },
+  "message_bus": {
+    "enabled": true,
+    "log_filename": "messages.jsonl"
+  },
+  "llm_decisions": {
+    "enabled": false,
+    "roles": ["orchestrator", "recon", "analysis", "verification"],
+    "confidence_thresholds": {
+      "orchestrator": 0.55,
+      "recon": 0.6,
+      "analysis": 0.7,
+      "verification": 0.75
+    },
+    "repair_enabled": true,
+    "max_repair_attempts": 1,
+    "tool_budget_per_role": {},
+    "allow_live_target_actions": false,
+    "decision_artifact_dir": "decisions"
+  },
+  "audit_scope": {
+    "vulnerability_classes": [
+      "sql-injection",
+      "command-injection",
+      "path-traversal",
+      "hardcoded-secret"
+    ],
+    "include_patterns": [],
+    "exclude_patterns": [],
+    "analysis_budget": 100,
+    "tool_budget": 80,
+    "cve_query_budget": 50
+  },
+  "sandbox": {
+    "enabled": false,
+    "allow_live_targets": false,
+    "safe_commands": [],
+    "timeout_seconds": 10,
+    "workspace_prefix": "audit-agent-sandbox"
+  },
+  "tool_permissions": {
+    "repository_read": true,
+    "static_scan": true,
+    "vulnerability_intelligence": true,
+    "validation": true,
+    "live_network_validation": false
+  },
+  "output": {
+    "runs_dir": "runs",
+    "report_formats": ["json", "markdown"]
+  },
+  "validation_levels": ["static-only", "poc-generate", "sandbox", "manual"],
+  "default_validation_level": "static-only",
+  "runtime_enabled": false
+}
