@@ -21,6 +21,12 @@ Run tests:
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
+Install the package dependencies, including the optional local web backend:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
 ## Single-Target Audit
 
 ```powershell
@@ -30,6 +36,42 @@ Run tests:
 The run directory contains metadata, tool outputs, intelligence artifacts,
 agent traces, handoffs, findings, evidence chains, proof-of-concept artifacts,
 JSON/Markdown reports, message logs, and `runtime_state/state.json`.
+
+## Local Web Backend
+
+Start the FastAPI backend for local demos or a future UI:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn audit_agent.server.app:app --host 127.0.0.1 --port 8000
+```
+
+Create a mock scan job:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/runs -ContentType "application/json" -Body '{
+  "target": "fixtures/integration_smoke",
+  "runtime": true,
+  "llm_provider": "mock",
+  "llm_decisions": true,
+  "memory_mode": "lexical",
+  "mcp_mode": "off",
+  "validation_level": "static-only"
+}'
+```
+
+Poll job status, then read runtime artifacts:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/runs/<job_id>
+Invoke-RestMethod http://127.0.0.1:8000/api/runs/<job_id>/runtime-state
+Invoke-RestMethod http://127.0.0.1:8000/api/runs/<job_id>/replay-summary
+Invoke-RestMethod http://127.0.0.1:8000/api/runs/<job_id>/reports/report.json
+Invoke-RestMethod http://127.0.0.1:8000/api/runs/<job_id>/reports/report.md
+```
+
+The backend is intentionally local-first. It does not accept API keys in HTTP
+requests, and report/runtime endpoints only read fixed files under the run
+directory associated with a known job.
 
 ## LLM Runtime Mode
 
