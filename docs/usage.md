@@ -29,7 +29,7 @@ Run tests:
 
 The run directory contains metadata, tool outputs, intelligence artifacts,
 agent traces, handoffs, findings, evidence chains, proof-of-concept artifacts,
-and JSON/Markdown reports.
+JSON/Markdown reports, message logs, and `runtime_state/state.json`.
 
 ## LLM Runtime Mode
 
@@ -162,4 +162,12 @@ with:
 
 ```powershell
 .\.venv\Scripts\python.exe -m audit_agent replay --messages runs\<run>\messages\messages.jsonl
+```
+
+The replay output includes `runtime_lifecycle`, which summarizes task statuses,
+tool calls, tool denials, service failures, artifacts, and fallback reasons by
+role. For the full persisted runtime graph, open:
+
+```powershell
+Get-Content runs\<run>\runtime_state\state.json
 ```

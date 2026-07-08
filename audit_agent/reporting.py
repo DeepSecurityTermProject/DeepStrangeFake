@@ -43,6 +43,7 @@ class ReportGenerator:
                 "mcp_call_refs",
                 "tool_call_refs",
                 "decision_refs",
+                "runtime_task_refs",
             ):
                 item[key] = finding.metadata.get(key, [])
             item["decision_source"] = finding.metadata.get("decision_source", "deterministic")
@@ -115,6 +116,8 @@ class ReportGenerator:
                 lines.append(f"- Memory refs: {', '.join(finding['memory_refs'])}")
             if finding.get("message_refs"):
                 lines.append(f"- Message refs: {', '.join(finding['message_refs'])}")
+            if finding.get("runtime_task_refs"):
+                lines.append(f"- Runtime task refs: {', '.join(finding['runtime_task_refs'])}")
             lines.extend(
                 [
                     "",

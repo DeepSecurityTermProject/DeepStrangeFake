@@ -26,6 +26,7 @@ RUN_DIRS = [
     "messages",
     "memory",
     "mcp",
+    "runtime_state",
     "runtime_errors",
 ]
 

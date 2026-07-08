@@ -70,6 +70,14 @@ def replay_summary(log_path: Path | str) -> dict:
     messages = replay_messages(log_path)
     counts: dict[str, int] = {}
     lifecycle = {"roles": {}, "accepted_gates": 0, "denied_gates": 0, "fallbacks": 0}
+    runtime_lifecycle = {
+        "roles": {},
+        "tasks": {},
+        "fallbacks": 0,
+        "service_failures": 0,
+        "tool_calls": 0,
+        "artifacts": 0,
+    }
     for message in messages:
         counts[message.message_type] = counts.get(message.message_type, 0) + 1
         if message.message_type.startswith("decision.") or message.message_type == "llm.decision":
@@ -95,4 +103,52 @@ def replay_summary(log_path: Path | str) -> dict:
                 lifecycle["fallbacks"] += 1
                 reason = str(message.payload.get("fallback_reason") or "fallback")
                 role_summary["fallback_reasons"].append(reason)
-    return {"message_count": len(messages), "types": counts, "decision_lifecycle": lifecycle}
+        if message.message_type.startswith("runtime."):
+            _add_runtime_lifecycle(runtime_lifecycle, message)
+    return {
+        "message_count": len(messages),
+        "types": counts,
+        "decision_lifecycle": lifecycle,
+        "runtime_lifecycle": runtime_lifecycle,
+    }
+
+
+def _runtime_role_summary(runtime_lifecycle: dict, role: str) -> dict:
+    return runtime_lifecycle["roles"].setdefault(
+        role,
+        {"tasks": {}, "status_counts": {}, "tools": {}, "artifacts": 0, "fallback_reasons": []},
+    )
+
+
+def _add_runtime_lifecycle(runtime_lifecycle: dict, message: MessageEnvelope) -> None:
+    role = str(message.payload.get("role") or message.recipient or message.sender)
+    role_summary = _runtime_role_summary(runtime_lifecycle, role)
+    if message.message_type == "runtime.task":
+        task_id = str(message.payload.get("task_id") or "")
+        status = str(message.payload.get("status") or "unknown")
+        kind = str(message.payload.get("kind") or "unknown")
+        fallback_reason = str(message.payload.get("fallback_reason") or "")
+        if task_id:
+            task_summary = runtime_lifecycle["tasks"].setdefault(task_id, {"role": role, "kind": kind})
+            task_summary.update({"status": status, "fallback_reason": fallback_reason})
+            role_summary["tasks"][task_id] = {"kind": kind, "status": status}
+        role_summary["status_counts"][status] = role_summary["status_counts"].get(status, 0) + 1
+        if fallback_reason:
+            runtime_lifecycle["fallbacks"] += 1
+            role_summary["fallback_reasons"].append(fallback_reason)
+        return
+    if message.message_type in {"runtime.tool", "runtime.tool.denied"}:
+        tool_name = str(message.payload.get("tool") or "unknown")
+        tool_summary = role_summary["tools"].setdefault(tool_name, {"calls": 0, "denied": 0, "failed": 0})
+        tool_summary["calls"] += 1
+        runtime_lifecycle["tool_calls"] += 1
+        if message.message_type == "runtime.tool.denied":
+            tool_summary["denied"] += 1
+            runtime_lifecycle["service_failures"] += 1
+        elif message.payload.get("success") is False:
+            tool_summary["failed"] += 1
+            runtime_lifecycle["service_failures"] += 1
+        return
+    if message.message_type == "runtime.artifact":
+        role_summary["artifacts"] += 1
+        runtime_lifecycle["artifacts"] += 1

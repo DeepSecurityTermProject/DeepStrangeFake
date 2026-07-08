@@ -3,6 +3,31 @@
 This runtime turns the deterministic four-agent MVP into a configurable LLM
 agent system while preserving offline mock mode.
 
+## Runtime Kernel
+
+`audit_agent.runtime.AgentRuntime` is now the single orchestration layer behind
+`audit_agent.pipeline.run_audit()`. The old public entrypoint is kept for CLI and
+test compatibility, but run setup, task sequencing, service calls, fallback, and
+finalization flow through the runtime kernel.
+
+The kernel uses these backend contracts:
+
+- `AgentRegistry` registers the Orchestrator, Recon, Analysis, and Verification
+  role adapters and rejects duplicate or missing required roles.
+- `RunState` stores run status, final summary, artifact refs, message refs, and
+  the ordered task list.
+- `TaskState` stores per-role task status, input/output refs, artifact refs,
+  message refs, errors, and fallback reasons.
+- `ArtifactStore` wraps run artifact writes, immutable filenames, prompt/LLM and
+  decision persistence, redaction, and `runtime.artifact` events.
+- `ToolBroker` wraps the tool protocol, materializes safe context arguments,
+  enforces permissions/budgets, and records `runtime.tool` or
+  `runtime.tool.denied` events.
+
+Each runtime run writes `runtime_state/state.json`. This file is the fastest way
+to inspect who ran, which task produced each artifact, and whether a task used a
+fallback path.
+
 ## LLMClient
 
 `audit_agent.llm` defines a provider-neutral client contract. Mock mode requires
@@ -48,6 +73,10 @@ range, content hash, artifact reference, and citation.
 `audit_agent.message_bus` provides in-process publish/subscribe routing and an
 append-only JSONL log. The `replay` CLI command summarizes message logs for
 traceability.
+
+Replay summaries include both `decision_lifecycle` and `runtime_lifecycle`.
+`runtime_lifecycle` groups task status counts, tool calls, denials, artifacts,
+service failures, and fallback reasons by role.
 
 ## LLM Decision Loop
 
