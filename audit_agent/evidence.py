@@ -40,16 +40,23 @@ class EvidenceBuilder:
         ]
         trace_refs = [trace.to_dict() for trace in agent_traces]
         handoff_refs = [handoff.to_dict() for handoff in handoffs]
+        dataflow_trace_refs = list(finding.metadata.get("dataflow_trace_refs", []))
+        source_locations = _source_locations_with_dataflow(finding)
+        artifact_refs = list(validation.artifacts)
+        for ref in dataflow_trace_refs:
+            if ref and ref not in artifact_refs:
+                artifact_refs.append(ref)
         chain = EvidenceChain(
             finding_id=finding.id or "",
-            source_locations=[finding.location],
+            source_locations=source_locations,
             vulnerability_class=finding.vulnerability_class,
             analysis_rationale=finding.description or finding.title,
             verification=verification.to_dict(),
             validation=validation.to_dict(),
             intelligence_refs=intelligence_refs,
-            artifact_refs=list(validation.artifacts),
+            artifact_refs=artifact_refs,
             tool_refs=tool_refs,
+            dataflow_trace_refs=dataflow_trace_refs,
             agent_traces=trace_refs,
             handoffs=handoff_refs,
             call_path=finding.call_path,
@@ -63,3 +70,27 @@ class EvidenceBuilder:
         path.write_text(json.dumps(to_plain(payload), ensure_ascii=False, indent=2), encoding="utf-8")
         return {"kind": category, "path": str(path), "payload": payload}
 
+
+def _source_locations_with_dataflow(finding: Finding):
+    locations = [finding.location]
+    seen = {(finding.location.path, finding.location.start_line, finding.location.end_line)}
+    for item in finding.metadata.get("dataflow_locations", []):
+        path = item.get("path")
+        start = item.get("start_line")
+        end = item.get("end_line") or start
+        if not path or not start:
+            continue
+        key = (path, int(start), int(end))
+        if key in seen:
+            continue
+        seen.add(key)
+        locations.append(
+            type(finding.location)(
+                path=path,
+                start_line=int(start),
+                end_line=int(end),
+                symbol=item.get("symbol"),
+                snippet=item.get("snippet"),
+            )
+        )
+    return locations

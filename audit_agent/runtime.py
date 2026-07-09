@@ -349,10 +349,12 @@ class ToolBroker:
         return result
 
     def _materialize(self, tool_name: str, arguments: dict[str, Any], metadata, memory_store, mcp_client):
-        if tool_name in {"pattern-scan", "repository-search", "source-context"}:
+        if tool_name in {"pattern-scan", "dataflow-scan", "repository-search", "source-context"}:
             if metadata is None:
                 return None
             arguments["metadata"] = metadata
+        if tool_name == "dataflow-scan" and "artifact_root" not in arguments:
+            arguments["artifact_root"] = self.artifacts.run.path / "dataflow" / "traces"
         if tool_name == "repository-search":
             arguments.setdefault("pattern", "os\\.system|subprocess|SELECT|secret")
         if tool_name == "source-context":
@@ -508,18 +510,23 @@ class AgentRuntime:
             self._finish_task(memory_task, output_refs=[str(retrieval_path)])
 
         scan_task = self._start_task("analysis", "tool")
-        scan_result = self.tool_broker.dispatch("analysis", "pattern-scan", {}, metadata=metadata, task_state=scan_task)
-        scan_path = self.artifacts.write_json("tool_outputs", "pattern-scan.json", scan_result.to_dict(), scan_task)
+        dataflow_result = self.tool_broker.dispatch("analysis", "dataflow-scan", {}, metadata=metadata, task_state=scan_task)
+        dataflow_path = self.artifacts.write_json("tool_outputs", "dataflow-scan.json", dataflow_result.to_dict(), scan_task)
+        pattern_result = self.tool_broker.dispatch("analysis", "pattern-scan", {}, metadata=metadata, task_state=scan_task)
+        pattern_path = self.artifacts.write_json("tool_outputs", "pattern-scan.json", pattern_result.to_dict(), scan_task)
+        scan_results = [dataflow_result, pattern_result]
+        scan_result = dataflow_result if dataflow_result.observations else pattern_result
         if self.bus:
-            msg = self.bus.publish(
-                "tool-protocol",
-                "analysis",
-                "tool.result",
-                {"tool": scan_result.tool_name, "observations": len(scan_result.observations), "task_id": scan_task.id},
-                artifact_refs=[scan_path],
-            )
-            self._record_message(msg.message_id, scan_task)
-        self._finish_task(scan_task, output_refs=[scan_result.id or ""])
+            for result, path in ((dataflow_result, dataflow_path), (pattern_result, pattern_path)):
+                msg = self.bus.publish(
+                    "tool-protocol",
+                    "analysis",
+                    "tool.result",
+                    {"tool": result.tool_name, "observations": len(result.observations), "task_id": scan_task.id},
+                    artifact_refs=[path],
+                )
+                self._record_message(msg.message_id, scan_task)
+        self._finish_task(scan_task, output_refs=[result.id or "" for result in scan_results])
 
         intelligence = []
         if metadata.dependencies:
@@ -627,7 +634,7 @@ class AgentRuntime:
         analysis_output = self._invoke_agent(
             "analysis",
             analysis_task,
-            {"metadata": metadata, "recon_handoff": recon.handoff, "tool_results": [scan_result], "intelligence": intelligence},
+            {"metadata": metadata, "recon_handoff": recon.handoff, "tool_results": scan_results, "intelligence": intelligence},
         )
         analysis = analysis_output.payload["result"]
         self.artifacts.write_json("agent_traces", "analysis.json", analysis.trace.to_dict(), analysis_task)
@@ -642,7 +649,7 @@ class AgentRuntime:
                 "analysis.candidates",
                 {
                     "repository_summary": metadata.to_dict(),
-                    "tool_outputs": scan_result.to_dict(),
+                    "tool_outputs": [result.to_dict() for result in scan_results],
                     "memory_context": [item.to_dict() for item in memory_retrievals],
                     "intelligence_context": [item.to_dict() for item in intelligence],
                 },
@@ -718,7 +725,7 @@ class AgentRuntime:
                 "verification.decision",
                 {
                     "candidate_json": [finding.to_dict() for finding in candidates],
-                    "evidence_summary": scan_result.to_dict(),
+                    "evidence_summary": [result.to_dict() for result in scan_results],
                 },
             )
             if self._decision_enabled("verification"):
@@ -775,7 +782,7 @@ class AgentRuntime:
                 evidence_builder.build(
                     finding=decision.finding,
                     metadata=metadata,
-                    tool_results=[scan_result],
+                    tool_results=scan_results,
                     intelligence=intelligence,
                     verification=decision,
                     validation=validation,

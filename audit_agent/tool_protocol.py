@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AuditConfig
+from .dataflow.scanner import DataflowScanner
 from .models import ToolCallRequest, ToolCallResult, ToolDeclaration, ToolObservation, ToolResult, to_plain
 from .storage import immutable_path
 from .tools import PatternScanner, RepositorySearchTool, SourceContextTool
@@ -195,6 +196,26 @@ class ToolRuntime:
         result.artifact_paths.append(str(path))
 
 
+def _positive_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _run_dataflow_scan(arguments: dict[str, Any]) -> ToolResult:
+    scanner = DataflowScanner(
+        max_files=_positive_int(arguments.get("max_files"), 500),
+        max_traces=_positive_int(arguments.get("max_traces"), 200),
+    )
+    return scanner.scan(
+        arguments["metadata"],
+        artifact_root=arguments.get("artifact_root"),
+        language_filter=arguments.get("language_filter"),
+    )
+
+
 def build_default_tool_registry(config: AuditConfig | None = None) -> ToolRegistry:
     registry = ToolRegistry()
     search_tool = RepositorySearchTool()
@@ -222,6 +243,19 @@ def build_default_tool_registry(config: AuditConfig | None = None) -> ToolRegist
         {"type": "object"},
         "static-scan",
         lambda arguments: scanner.scan(arguments["metadata"]),
+    )
+    registry.register(
+        "dataflow-scan",
+        "Run built-in AST-backed source-to-sink dataflow scan.",
+        {
+            "type": "object",
+            "properties": {
+                "max_files": {"type": "integer"},
+                "max_traces": {"type": "integer"},
+            },
+        },
+        "static-scan",
+        _run_dataflow_scan,
     )
     registry.register(
         "memory.retrieve",

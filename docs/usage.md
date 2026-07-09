@@ -275,3 +275,42 @@ role. For the full persisted runtime graph, open:
 ```powershell
 Get-Content runs\<run>\runtime_state\state.json
 ```
+
+## AST Dataflow Evidence
+
+The built-in static scanner now includes a `dataflow-scan` tool. It records
+source-to-sink traces for Python and JS/TS web inputs reaching SQL execution,
+command execution, or file/path read sinks.
+
+Python parsing uses the standard library `ast` module. JS/TS scanning uses
+Tree-sitter through `tree-sitter-language-pack` when the optional parser
+packages are installed, and falls back to bounded local scanning when they are
+not installed:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[js-ast]"
+```
+
+Run a scan as usual:
+
+```powershell
+.\.venv\Scripts\python.exe -m audit_agent scan --target fixtures/integration_smoke --runtime --llm-provider mock
+```
+
+Each accepted dataflow-backed finding keeps only a compact summary in
+`call_path` and report fields. The complete trace is stored as an immutable JSON
+artifact under:
+
+```text
+runs\<run>\dataflow\traces\<trace-id>.json
+```
+
+Reports include a Dataflow Evidence section with source, sink, sanitizer status,
+and trace refs. Evidence chains also reference the full trace artifacts so a
+reviewer can reproduce the path without relying on LLM text.
+
+The JS/TS trace artifact includes `metadata.parse_backend` so reviewers can see
+whether a trace came from `tree-sitter` or the offline fallback. Current
+propagation is MVP-bounded and mostly language-frontend local. Python supports
+simple same-file helper return propagation, while deeper interprocedural and
+cross-file dataflow remain follow-up engine work.

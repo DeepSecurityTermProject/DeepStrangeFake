@@ -44,8 +44,15 @@ class ReportGenerator:
                 "tool_call_refs",
                 "decision_refs",
                 "runtime_task_refs",
+                "dataflow_trace_refs",
             ):
-                item[key] = finding.metadata.get(key, [])
+                item[key] = finding.metadata.get(
+                    key,
+                    chain.dataflow_trace_refs if key == "dataflow_trace_refs" and chain else [],
+                )
+            item["dataflow_summary"] = finding.metadata.get("dataflow_summary", {})
+            item["dataflow_status"] = finding.metadata.get("dataflow_status", "")
+            item["dataflow_rule_ids"] = finding.metadata.get("dataflow_rule_ids", [])
             item["decision_source"] = finding.metadata.get("decision_source", "deterministic")
             item["llm_confidence"] = finding.metadata.get("llm_confidence")
             item["policy_gate"] = finding.metadata.get("policy_gate", {})
@@ -118,6 +125,20 @@ class ReportGenerator:
                 lines.append(f"- Message refs: {', '.join(finding['message_refs'])}")
             if finding.get("runtime_task_refs"):
                 lines.append(f"- Runtime task refs: {', '.join(finding['runtime_task_refs'])}")
+            if finding.get("dataflow_trace_refs"):
+                summary = finding.get("dataflow_summary") or {}
+                source = summary.get("source", {})
+                sink = summary.get("sink", {})
+                lines.extend(
+                    [
+                        "",
+                        "#### Dataflow Evidence",
+                        f"- Source: {source.get('path', finding['location']['path'])}:{source.get('line', finding['location']['start_line'])} {source.get('expression', '')}".rstrip(),
+                        f"- Sink: {sink.get('path', finding['location']['path'])}:{sink.get('line', finding['location']['start_line'])} {sink.get('expression', '')}".rstrip(),
+                        f"- Sanitizer: {summary.get('sanitizer_status', finding.get('dataflow_status') or 'unknown')}",
+                        f"- Trace refs: {', '.join(finding['dataflow_trace_refs'])}",
+                    ]
+                )
             lines.extend(
                 [
                     "",

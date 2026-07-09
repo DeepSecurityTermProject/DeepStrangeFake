@@ -137,12 +137,33 @@ class AnalysisAgent:
     ) -> AgentRunResult:
         intelligence = intelligence or []
         findings: list[Finding] = []
+        seen_locations: set[tuple[str, int | None, str | None]] = set()
         for tool_result in tool_results:
             for observation in tool_result.observations:
+                if _is_dataflow_observation(observation):
+                    if observation.raw.get("dataflow_status") not in {"complete-flow", "sanitized-flow"}:
+                        continue
+                    key = _observation_key(observation)
+                    if key in seen_locations:
+                        continue
+                    seen_locations.add(key)
+                    finding = _finding_from_dataflow_observation(
+                        observation,
+                        tool_result,
+                        recon_handoff,
+                        intelligence,
+                    )
+                    if finding.vulnerability_class in self.config.audit_scope.vulnerability_classes:
+                        findings.append(finding)
+                    continue
                 if not observation.vulnerability_class:
                     continue
                 if observation.vulnerability_class not in self.config.audit_scope.vulnerability_classes:
                     continue
+                key = _observation_key(observation)
+                if key in seen_locations:
+                    continue
+                seen_locations.add(key)
                 related_intel = _related_intelligence(observation.vulnerability_class, intelligence)
                 location = SourceLocation(
                     path=observation.path or "",
@@ -252,16 +273,36 @@ class VerificationAgent:
                 finding.verifier_decision = "reject"
                 continue
 
+            if finding.metadata.get("dataflow_status") == "sanitized-flow":
+                decisions.append(
+                    VerificationDecision(
+                        finding=finding,
+                        decision="reject",
+                        reason="Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+                        confidence=min(finding.confidence, 0.45),
+                        validation_level="manual",
+                        priority="low",
+                        intelligence_refs=[item.id for item in related],
+                    )
+                )
+                finding.verifier_decision = "reject"
+                continue
+
             priority = _priority(finding, related)
             validation_level = self.config.default_validation_level
             finding.verifier_decision = "accept"
             finding.validation_level = validation_level
+            reason = "Accepted: local source evidence and tool output are present."
+            confidence = min(max(finding.confidence, 0.55), 0.95)
+            if finding.metadata.get("dataflow_status") == "complete-flow":
+                reason = "Accepted: complete local source-to-sink dataflow evidence is present."
+                confidence = min(max(finding.confidence, 0.75), 0.96)
             decisions.append(
                 VerificationDecision(
                     finding=finding,
                     decision="accept",
-                    reason="Accepted: local source evidence and tool output are present.",
-                    confidence=min(max(finding.confidence, 0.55), 0.95),
+                    reason=reason,
+                    confidence=confidence,
                     validation_level=validation_level,
                     priority=priority,
                     intelligence_refs=[item.id for item in related],
@@ -323,6 +364,70 @@ def _related_intelligence(
     desired = cwe_by_class.get(vulnerability_class, set())
     related = [item for item in intelligence if desired.intersection(set(item.cwe_ids))]
     return related or list(intelligence[:1])
+
+
+def _is_dataflow_observation(observation) -> bool:
+    return str(observation.kind).startswith("dataflow-") or bool(observation.raw.get("dataflow_trace_id"))
+
+
+def _observation_key(observation) -> tuple[str, int | None, str | None]:
+    return (observation.path or "", observation.line, observation.vulnerability_class)
+
+
+def _finding_from_dataflow_observation(
+    observation,
+    tool_result: ToolResult,
+    recon_handoff: AgentHandoff,
+    intelligence: list[VulnerabilityIntelligence],
+) -> Finding:
+    vulnerability_class = observation.vulnerability_class or observation.raw.get("dataflow_summary", {}).get(
+        "vulnerability_class", "unknown"
+    )
+    related_intel = _related_intelligence(vulnerability_class, intelligence)
+    summary = observation.raw.get("dataflow_summary") or {}
+    sink = summary.get("sink") or {}
+    source = summary.get("source") or {}
+    trace_ref = observation.raw.get("dataflow_trace_ref") or observation.raw.get("trace_artifact")
+    trace_refs = [trace_ref] if trace_ref else []
+    locations = observation.raw.get("dataflow_locations") or []
+    location = SourceLocation(
+        path=observation.path or sink.get("path") or "",
+        start_line=observation.line or sink.get("line") or 1,
+        end_line=observation.line or sink.get("line") or 1,
+        symbol=sink.get("symbol"),
+        snippet=observation.evidence,
+    )
+    finding = Finding(
+        vulnerability_class=vulnerability_class,
+        severity=observation.severity or "medium",
+        confidence=float(summary.get("confidence") or 0.84),
+        location=location,
+        title=_title_for(vulnerability_class),
+        description=(
+            f"Dataflow trace shows {source.get('expression', 'user input')} reaching "
+            f"{sink.get('expression', observation.evidence or 'sink')}."
+        ),
+        evidence=[observation.evidence or observation.message],
+        remediation=_remediation_for(vulnerability_class),
+        call_path=observation.raw.get("call_path") or [],
+        tool_refs=[tool_result.id or tool_result.tool_name],
+        intelligence_refs=[item.id for item in related_intel],
+        handoff_refs=[recon_handoff.id or ""],
+        agent_trace_refs=[recon_handoff.trace_id] if recon_handoff.trace_id else [],
+        metadata={
+            "dataflow_trace_ids": [observation.raw.get("dataflow_trace_id")]
+            if observation.raw.get("dataflow_trace_id")
+            else [],
+            "dataflow_trace_refs": trace_refs,
+            "dataflow_summary": summary,
+            "dataflow_status": observation.raw.get("dataflow_status"),
+            "dataflow_rule_ids": observation.raw.get("rule_ids") or [],
+            "dataflow_locations": locations,
+            "local_evidence_refs": [ref for ref in [tool_result.id, trace_ref] if ref],
+        },
+    )
+    _copy_intelligence_context(finding, related_intel)
+    return finding
 
 
 def findings_from_llm_candidates(payload: dict[str, Any], metadata: RepositoryMetadata) -> list[Finding]:

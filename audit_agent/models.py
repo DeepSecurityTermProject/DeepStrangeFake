@@ -584,6 +584,7 @@ class EvidenceChain:
     intelligence_refs: list[dict[str, Any]] = field(default_factory=list)
     artifact_refs: list[str] = field(default_factory=list)
     tool_refs: list[dict[str, Any]] = field(default_factory=list)
+    dataflow_trace_refs: list[str] = field(default_factory=list)
     agent_traces: list[dict[str, Any]] = field(default_factory=list)
     handoffs: list[dict[str, Any]] = field(default_factory=list)
     call_path: list[str] = field(default_factory=list)
