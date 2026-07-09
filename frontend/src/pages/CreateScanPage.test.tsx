@@ -64,6 +64,7 @@ describe("CreateScanPage", () => {
     await userEvent.selectOptions(screen.getByLabelText(/memory/i), "lexical");
     await userEvent.selectOptions(screen.getByLabelText(/mcp/i), "off");
     await userEvent.selectOptions(screen.getByLabelText(/validation/i), "static-only");
+    await userEvent.click(screen.getByLabelText(/sandbox execution/i));
     await userEvent.clear(screen.getByLabelText(/include patterns/i));
     await userEvent.type(screen.getByLabelText(/include patterns/i), "src/**\napp.py");
     await userEvent.clear(screen.getByLabelText(/exclude patterns/i));
@@ -81,6 +82,7 @@ describe("CreateScanPage", () => {
       memory_mode: "lexical",
       mcp_mode: "off",
       validation_level: "static-only",
+      sandbox_enabled: true,
       include_patterns: ["src/**", "app.py"],
       exclude_patterns: ["tests/**", "fixtures/**"]
     });

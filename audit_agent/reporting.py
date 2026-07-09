@@ -5,6 +5,7 @@ from typing import Any
 
 from .models import EvidenceChain, Finding, Report, RepositoryMetadata
 from .repository import source_category
+from .verification import VerificationStatus, verification_status_counts
 
 
 REMEDIATION = {
@@ -22,59 +23,25 @@ class ReportGenerator:
         findings: list[Finding],
         evidence_chains: list[EvidenceChain],
         runtime: dict[str, Any] | None = None,
+        verification_candidates: list[Finding] | None = None,
     ) -> Report:
         evidence_by_finding = {chain.finding_id: chain for chain in evidence_chains}
-        report_findings: list[dict[str, Any]] = []
         source_category_distribution: dict[str, int] = {}
-        for finding in findings:
-            chain = evidence_by_finding.get(finding.id or "")
-            item = finding.to_dict()
-            category = finding.metadata.get("source_category") or metadata.file_categories.get(
-                finding.location.path,
-                source_category(finding.location.path),
-            )
-            item["source_category"] = category
-            source_category_distribution[category] = source_category_distribution.get(category, 0) + 1
-            item["remediation"] = item.get("remediation") or REMEDIATION.get(
-                finding.vulnerability_class, "Review and fix the affected code path."
-            )
-            item["evidence_chain_id"] = chain.id if chain else None
-            item["agent_traces"] = chain.agent_traces if chain else []
-            item["handoffs"] = chain.handoffs if chain else []
-            item["validation"] = chain.validation if chain else {}
-            item["vulnerability_intelligence"] = _intelligence_context(finding, chain)
-            for key in (
-                "prompt_refs",
-                "llm_response_refs",
-                "message_refs",
-                "memory_refs",
-                "mcp_call_refs",
-                "tool_call_refs",
-                "decision_refs",
-                "runtime_task_refs",
-                "dataflow_trace_refs",
-            ):
-                item[key] = finding.metadata.get(
-                    key,
-                    chain.dataflow_trace_refs if key == "dataflow_trace_refs" and chain else [],
-                )
-            item["dataflow_summary"] = finding.metadata.get("dataflow_summary", {})
-            item["dataflow_status"] = finding.metadata.get("dataflow_status", "")
-            item["dataflow_rule_ids"] = finding.metadata.get("dataflow_rule_ids", [])
-            item["decision_source"] = finding.metadata.get("decision_source", "deterministic")
-            item["llm_confidence"] = finding.metadata.get("llm_confidence")
-            item["policy_gate"] = finding.metadata.get("policy_gate", {})
-            item["fallback_reason"] = finding.metadata.get("fallback_reason", "")
-            item["local_evidence_refs"] = finding.metadata.get("local_evidence_refs", list(finding.tool_refs))
-            item["contextual_intelligence_refs"] = finding.metadata.get(
-                "contextual_intelligence_refs",
-                list(finding.intelligence_refs) + finding.metadata.get("memory_refs", []),
-            )
-            report_findings.append(item)
+        report_findings = [
+            self._finding_item(finding, metadata, evidence_by_finding, source_category_distribution)
+            for finding in findings
+        ]
+        candidate_items = [
+            self._finding_item(finding, metadata, evidence_by_finding, None)
+            for finding in (verification_candidates or findings)
+        ]
+        status_counts = verification_status_counts(candidate_items)
         summary = {
             "target": metadata.target.source,
             "finding_count": len(report_findings),
-            "validated_count": sum(1 for item in report_findings if item.get("verifier_decision") == "accept"),
+            "verification_candidate_count": len(candidate_items),
+            "validated_count": sum(1 for item in candidate_items if item.get("verifier_decision") == "accept"),
+            **status_counts,
             "languages": metadata.languages,
             "source_category_distribution": source_category_distribution,
         }
@@ -82,9 +49,71 @@ class ReportGenerator:
             target_metadata=metadata.to_dict(),
             executive_summary=summary,
             findings=report_findings,
+            verification_candidates=candidate_items,
             evidence_chains=[chain.to_dict() for chain in evidence_chains],
             runtime=runtime or {},
         )
+
+    def _finding_item(
+        self,
+        finding: Finding,
+        metadata: RepositoryMetadata,
+        evidence_by_finding: dict[str, EvidenceChain],
+        source_category_distribution: dict[str, int] | None,
+    ) -> dict[str, Any]:
+        chain = evidence_by_finding.get(finding.id or "")
+        item = finding.to_dict()
+        category = finding.metadata.get("source_category") or metadata.file_categories.get(
+            finding.location.path,
+            source_category(finding.location.path),
+        )
+        item["source_category"] = category
+        if source_category_distribution is not None:
+            source_category_distribution[category] = source_category_distribution.get(category, 0) + 1
+        item["remediation"] = item.get("remediation") or REMEDIATION.get(
+            finding.vulnerability_class, "Review and fix the affected code path."
+        )
+        item["evidence_chain_id"] = chain.id if chain else None
+        item["agent_traces"] = chain.agent_traces if chain else []
+        item["handoffs"] = chain.handoffs if chain else []
+        item["validation"] = chain.validation if chain else finding.metadata.get("validation_summary", {})
+        item["verification_status"] = _verification_status(finding, item["validation"])
+        item["verification_reason"] = (
+            finding.verification_reason
+            or finding.metadata.get("verification_reason")
+            or item["validation"].get("verification_reason")
+            or item["validation"].get("message")
+            or ""
+        )
+        item["vulnerability_intelligence"] = _intelligence_context(finding, chain)
+        for key in (
+            "prompt_refs",
+            "llm_response_refs",
+            "message_refs",
+            "memory_refs",
+            "mcp_call_refs",
+            "tool_call_refs",
+            "decision_refs",
+            "runtime_task_refs",
+            "dataflow_trace_refs",
+        ):
+            item[key] = finding.metadata.get(
+                key,
+                chain.dataflow_trace_refs if key == "dataflow_trace_refs" and chain else [],
+            )
+        item["dataflow_summary"] = finding.metadata.get("dataflow_summary", {})
+        item["dataflow_status"] = finding.metadata.get("dataflow_status", "")
+        item["dataflow_rule_ids"] = finding.metadata.get("dataflow_rule_ids", [])
+        item["decision_source"] = finding.metadata.get("decision_source", "deterministic")
+        item["llm_confidence"] = finding.metadata.get("llm_confidence")
+        item["policy_gate"] = finding.metadata.get("policy_gate", {})
+        item["fallback_reason"] = finding.metadata.get("fallback_reason", "")
+        item["local_evidence_refs"] = finding.metadata.get("local_evidence_refs", list(finding.tool_refs))
+        item["contextual_intelligence_refs"] = finding.metadata.get(
+            "contextual_intelligence_refs",
+            list(finding.intelligence_refs) + finding.metadata.get("memory_refs", []),
+        )
+        return item
 
     def to_json(self, report: Report) -> str:
         return json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
@@ -98,10 +127,44 @@ class ReportGenerator:
             f"- Target: {report.executive_summary.get('target')}",
             f"- Findings: {report.executive_summary.get('finding_count')}",
             f"- Validated/accepted: {report.executive_summary.get('validated_count')}",
+            f"- Confirmed: {report.executive_summary.get('confirmed_count', 0)}",
+            f"- Likely: {report.executive_summary.get('likely_count', 0)}",
+            f"- Rejected: {report.executive_summary.get('rejected_count', 0)}",
+            f"- Manual required: {report.executive_summary.get('manual_required_count', 0)}",
             "",
-            "## Findings",
+            "## Verification Evidence",
             "",
         ]
+        for candidate in report.verification_candidates:
+            validation = candidate.get("validation") or {}
+            lines.extend(
+                [
+                    f"### {candidate['title']}",
+                    "",
+                    f"- ID: {candidate['id']}",
+                    f"- Status: {candidate.get('verification_status', 'unknown')}",
+                    f"- Reason: {candidate.get('verification_reason', '')}",
+                    f"- Class: {candidate['vulnerability_class']}",
+                    f"- Location: {candidate['location']['path']}:{candidate['location']['start_line']}",
+                    f"- Validation level: {validation.get('level', candidate.get('validation_level'))}",
+                ]
+            )
+            if validation.get("exit_code") is not None:
+                lines.append(f"- Exit code: {validation.get('exit_code')}")
+            if validation.get("judge_reason"):
+                lines.append(f"- Judge reason: {validation.get('judge_reason')}")
+            if validation.get("stdout_preview") is not None:
+                lines.append(f"- stdout: {validation.get('stdout_preview')}")
+            if validation.get("stderr_preview") is not None:
+                lines.append(f"- stderr: {validation.get('stderr_preview')}")
+            refs: list[str] = []
+            for key in ("poc_refs", "sandbox_result_refs", "attempt_refs", "artifacts"):
+                refs.extend(validation.get(key) or [])
+            if refs:
+                lines.append(f"- Artifact refs: {', '.join(refs)}")
+            lines.append("")
+
+        lines.extend(["## Findings", ""])
         for finding in report.findings:
             lines.extend(
                 [
@@ -113,6 +176,7 @@ class ReportGenerator:
                     f"- Confidence: {finding['confidence']}",
                     f"- Location: {finding['location']['path']}:{finding['location']['start_line']}",
                     f"- Source category: {finding.get('source_category', 'product-code')}",
+                    f"- Verification status: {finding.get('verification_status', 'unknown')}",
                     f"- Validation: {finding.get('validation', {}).get('level', finding.get('validation_level'))}",
                     f"- Remediation: {finding['remediation']}",
                 ]
@@ -174,3 +238,24 @@ def _intelligence_context(finding: Finding, chain: EvidenceChain | None) -> list
     if chain:
         return chain.intelligence_refs
     return [{"id": ref, "contextual": True, "validation_evidence": False} for ref in finding.intelligence_refs]
+
+
+def _verification_status(finding: Finding, validation: dict[str, Any]) -> str:
+    status = (
+        finding.verification_status
+        or finding.metadata.get("verification_status")
+        or validation.get("verification_status")
+        or validation.get("status")
+    )
+    if status in {
+        VerificationStatus.CONFIRMED,
+        VerificationStatus.LIKELY,
+        VerificationStatus.REJECTED,
+        VerificationStatus.MANUAL_REQUIRED,
+    }:
+        return str(status)
+    if finding.verifier_decision == "reject":
+        return VerificationStatus.REJECTED
+    if finding.verifier_decision == "accept":
+        return VerificationStatus.LIKELY
+    return VerificationStatus.MANUAL_REQUIRED

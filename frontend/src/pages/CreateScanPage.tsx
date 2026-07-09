@@ -32,6 +32,7 @@ export function CreateScanPage() {
   const [memoryMode, setMemoryMode] = useState<MemoryMode>("lexical");
   const [mcpMode, setMcpMode] = useState<McpMode>("off");
   const [validationLevel, setValidationLevel] = useState<ValidationLevel>("static-only");
+  const [sandboxEnabled, setSandboxEnabled] = useState(false);
   const [includePatterns, setIncludePatterns] = useState("");
   const [excludePatterns, setExcludePatterns] = useState(DEFAULT_OPTIONS.default_exclude_patterns.join("\n"));
   const [targetError, setTargetError] = useState("");
@@ -71,6 +72,7 @@ export function CreateScanPage() {
       memory_mode: memoryMode,
       mcp_mode: mcpMode,
       validation_level: validationLevel,
+      sandbox_enabled: sandboxEnabled,
       include_patterns: parsePatterns(includePatterns),
       exclude_patterns: parsePatterns(excludePatterns),
       ...(requestedModel ? { model: requestedModel } : {})
@@ -111,6 +113,15 @@ export function CreateScanPage() {
               onChange={(event) => setLlmDecisions(event.target.checked)}
             />
             <span>LLM decisions</span>
+          </label>
+          <label className="check-row">
+            <input
+              id="sandbox-enabled"
+              type="checkbox"
+              checked={sandboxEnabled}
+              onChange={(event) => setSandboxEnabled(event.target.checked)}
+            />
+            <span>Sandbox execution</span>
           </label>
         </div>
 
@@ -162,7 +173,13 @@ export function CreateScanPage() {
             <span>Validation</span>
             <select
               value={validationLevel}
-              onChange={(event) => setValidationLevel(event.target.value as ValidationLevel)}
+              onChange={(event) => {
+                const next = event.target.value as ValidationLevel;
+                setValidationLevel(next);
+                if (next === "sandbox") {
+                  setSandboxEnabled(true);
+                }
+              }}
             >
               {options.validation_levels.map((level) => (
                 <option key={level} value={level}>

@@ -168,6 +168,7 @@ class SandboxConfig:
     enabled: bool = False
     allow_live_targets: bool = False
     safe_commands: list[str] = field(default_factory=list)
+    command_allowlist: list[str] = field(default_factory=list)
     timeout_seconds: int = 10
     workspace_prefix: str = "audit-agent-sandbox"
 

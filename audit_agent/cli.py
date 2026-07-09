@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Validation level for accepted findings.",
     )
+    scan.add_argument(
+        "--sandbox",
+        action="store_true",
+        help="Enable local sandbox execution for PoC-backed validation. Required for sandbox validation execution.",
+    )
     scan.add_argument("--runtime", action="store_true", help="Enable LLM runtime, prompt, memory, MCP, and message logs.")
     scan.add_argument("--llm-provider", default=None, help="LLM provider, such as mock or openai-compatible.")
     scan.add_argument("--model", default=None, help="LLM model name.")
@@ -179,6 +184,8 @@ def _apply_runtime_args(config: AuditConfig, args) -> None:
         config.audit_scope.include_patterns.extend(args.include)
     if getattr(args, "exclude", None):
         config.audit_scope.exclude_patterns.extend(args.exclude)
+    if getattr(args, "sandbox", False):
+        config.sandbox.enabled = True
 
 
 def _add_integration_flags(parser: argparse.ArgumentParser) -> None:

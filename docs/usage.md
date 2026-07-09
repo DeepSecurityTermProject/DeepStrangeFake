@@ -60,7 +60,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/runs -ContentType 
   "llm_decisions": true,
   "memory_mode": "lexical",
   "mcp_mode": "off",
-  "validation_level": "static-only"
+  "validation_level": "static-only",
+  "sandbox_enabled": false
 }'
 ```
 
@@ -296,6 +297,17 @@ Run a scan as usual:
 ```powershell
 .\.venv\Scripts\python.exe -m audit_agent scan --target fixtures/integration_smoke --runtime --llm-provider mock
 ```
+
+Enable local PoC execution only when you also enable the sandbox runner:
+
+```powershell
+.\.venv\Scripts\python.exe -m audit_agent scan --target D:\path\to\project --runtime --validation-level sandbox --sandbox
+```
+
+`--validation-level sandbox` selects the verification policy. `--sandbox`
+explicitly enables local PoC execution. Without `--sandbox`, PoC-backed
+validation is blocked and findings remain `likely` or `manual-required`; the
+system must not convert static-only evidence into `confirmed`.
 
 Limit repository scope from the CLI when scanning large trees:
 

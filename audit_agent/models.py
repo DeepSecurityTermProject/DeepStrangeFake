@@ -503,6 +503,8 @@ class Finding:
     handoff_refs: list[str] = field(default_factory=list)
     validation_level: str | None = None
     validation_status: str | None = None
+    verification_status: str | None = None
+    verification_reason: str | None = None
     verifier_decision: str | None = None
     cve_ids: list[str] = field(default_factory=list)
     cwe_ids: list[str] = field(default_factory=list)
@@ -560,15 +562,121 @@ class VerificationDecision:
 
 
 @dataclass
+class PoCArtifact:
+    finding_id: str
+    vulnerability_class: str
+    generator_id: str
+    script_path: str
+    command_argv: list[str]
+    expected_signal: dict[str, Any]
+    safety_profile: dict[str, Any] = field(default_factory=dict)
+    source_refs: list[str] = field(default_factory=list)
+    dataflow_trace_refs: list[str] = field(default_factory=list)
+    target_file_refs: list[str] = field(default_factory=list)
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id(
+                "POC",
+                self.finding_id,
+                self.vulnerability_class,
+                self.generator_id,
+                self.script_path,
+                self.expected_signal,
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class SandboxRunResult:
+    poc_id: str
+    finding_id: str
+    attempt_id: str
+    status: str
+    cwd: str
+    argv: list[str]
+    timeout_seconds: int
+    environment: dict[str, Any] = field(default_factory=dict)
+    exit_code: int | None = None
+    timed_out: bool = False
+    duration_ms: int = 0
+    stdout_ref: str | None = None
+    stderr_ref: str | None = None
+    stdout_preview: str = ""
+    stderr_preview: str = ""
+    artifact_refs: list[str] = field(default_factory=list)
+    policy: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
+    started_at: str = field(default_factory=utc_now)
+    finished_at: str | None = None
+    metadata_path: str | None = None
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id("SBR", self.poc_id, self.attempt_id, self.status, self.started_at)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class VerificationAttempt:
+    finding_id: str
+    attempt_index: int
+    status: str
+    reason: str
+    poc_ref: str | None = None
+    sandbox_result_ref: str | None = None
+    stdout_ref: str | None = None
+    stderr_ref: str | None = None
+    exit_code: int | None = None
+    judge_reason: str = ""
+    repair_reason: str = ""
+    blocking_reason: str = ""
+    evidence_refs: list[str] = field(default_factory=list)
+    created_at: str = field(default_factory=utc_now)
+    metadata_path: str | None = None
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id("VAT", self.finding_id, self.attempt_index, self.status, self.created_at)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
 class ValidationResult:
     finding_id: str
     level: str
     status: str
     command: str | None = None
+    command_argv: list[str] = field(default_factory=list)
+    verification_status: str | None = None
+    verification_reason: str = ""
+    judge_reason: str = ""
+    exit_code: int | None = None
+    timed_out: bool = False
+    stdout_preview: str = ""
+    stderr_preview: str = ""
+    poc_refs: list[str] = field(default_factory=list)
+    sandbox_result_refs: list[str] = field(default_factory=list)
+    attempt_refs: list[str] = field(default_factory=list)
     environment: dict[str, Any] = field(default_factory=dict)
     artifacts: list[str] = field(default_factory=list)
     message: str = ""
     timestamp: str = field(default_factory=utc_now)
+
+    @property
+    def reason(self) -> str:
+        return self.verification_reason or self.judge_reason or self.message
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
@@ -606,6 +714,7 @@ class Report:
     executive_summary: dict[str, Any]
     findings: list[dict[str, Any]]
     evidence_chains: list[dict[str, Any]]
+    verification_candidates: list[dict[str, Any]] = field(default_factory=list)
     runtime: dict[str, Any] = field(default_factory=dict)
     run_status: str = "completed"
     generated_at: str = field(default_factory=utc_now)

@@ -419,6 +419,13 @@ tr:last-child td {
   align-items: flex-start;
 }
 
+.finding-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .finding-heading h3,
 .json-block h3 {
   margin: 0;
@@ -444,6 +451,36 @@ tr:last-child td {
 .severity-low,
 .severity-info,
 .severity-unknown {
+  background: #edf1f5;
+  color: #425466;
+}
+
+.verification-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.verification-confirmed {
+  background: #e6f4f1;
+  color: #087264;
+}
+
+.verification-likely {
+  background: #fff1d6;
+  color: #8a5200;
+}
+
+.verification-rejected {
+  background: #fdeceb;
+  color: #b42318;
+}
+
+.verification-manual-required {
   background: #edf1f5;
   color: #425466;
 }

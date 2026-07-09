@@ -29,7 +29,7 @@ from .repository import analyze_target
 from .storage import RunContext, RunStore, immutable_path
 from .tool_protocol import ToolBudget, ToolRuntime, build_default_tool_registry
 from .tools import PatternScanner
-from .validation import Validator
+from .verification import VerificationEngine, VerificationStatus, verification_status_counts
 
 
 TERMINAL_RUN_STATUSES = {"succeeded", "failed", "cancelled"}
@@ -768,16 +768,39 @@ class AgentRuntime:
         self._finish_task(verification_task, output_refs=[decision.finding_id or "" for decision in decisions])
 
         validation_task = self._start_task("validation", "service")
-        validator = Validator(config)
+        verifier = VerificationEngine(config, self.run.path)
         evidence_builder = EvidenceBuilder(self.run.path / "evidence")
         evidence_chains = []
-        for decision in accepted:
+        validation_results = []
+        for decision in decisions:
             for key, values in self.runtime_refs.items():
                 decision.finding.metadata.setdefault(key, [])
                 for value in values:
                     if value and value not in decision.finding.metadata[key]:
                         decision.finding.metadata[key].append(value)
-            validation = validator.validate(decision.finding, metadata, config.default_validation_level)
+            validation = verifier.verify(decision, metadata, config.default_validation_level)
+            validation_results.append(validation)
+            for ref in validation.artifacts:
+                validation_task.record_artifact(ref)
+                self.run_state.record_artifact(ref)
+            if self.bus:
+                msg = self.bus.publish(
+                    "validation",
+                    "verification",
+                    "verification.attempt",
+                    {
+                        "finding_id": decision.finding_id,
+                        "status": validation.verification_status or validation.status,
+                        "level": validation.level,
+                        "judge_reason": validation.judge_reason,
+                        "blocking_reason": validation.verification_reason
+                        if (validation.verification_status or validation.status) == VerificationStatus.MANUAL_REQUIRED
+                        else "",
+                    },
+                    artifact_refs=validation.artifacts,
+                )
+                self._record_message(msg.message_id, validation_task)
+                decision.finding.metadata.setdefault("message_refs", []).append(msg.message_id)
             evidence_chains.append(
                 evidence_builder.build(
                     finding=decision.finding,
@@ -791,6 +814,13 @@ class AgentRuntime:
                 )
             )
         self._finish_task(validation_task, output_refs=[chain.id or "" for chain in evidence_chains])
+        status_counts = verification_status_counts(validation_results)
+        active_decisions = [
+            decision
+            for decision in decisions
+            if decision.finding.verification_status
+            in {VerificationStatus.CONFIRMED, VerificationStatus.LIKELY, VerificationStatus.MANUAL_REQUIRED}
+        ]
 
         runtime_summary = {}
         if config.runtime_enabled:
@@ -806,13 +836,38 @@ class AgentRuntime:
                 },
                 "message_log": str(self.run.path / "messages" / config.message_bus.log_filename) if self.bus else "",
                 "token_usage": {"mode": "recorded-per-llm-artifact"},
+                "verification": {
+                    **status_counts,
+                    "candidate_count": len(decisions),
+                    "attempt_refs": [
+                        ref
+                        for result in validation_results
+                        for ref in result.attempt_refs
+                    ],
+                    "poc_refs": [ref for result in validation_results for ref in result.poc_refs],
+                    "sandbox_result_refs": [
+                        ref
+                        for result in validation_results
+                        for ref in result.sandbox_result_refs
+                    ],
+                },
             }
 
         reporting_task = self._start_task("reporting", "service")
         if config.runtime_enabled and self.bus:
-            msg = self.bus.publish("reporting", "pipeline", "report.generate", {"finding_count": len(accepted), "task_id": reporting_task.id})
+            msg = self.bus.publish(
+                "reporting",
+                "pipeline",
+                "report.generate",
+                {
+                    "finding_count": len(active_decisions),
+                    "verification_candidate_count": len(decisions),
+                    "task_id": reporting_task.id,
+                    **status_counts,
+                },
+            )
             self._record_message(msg.message_id, reporting_task)
-            for decision in accepted:
+            for decision in decisions:
                 decision.finding.metadata.setdefault("message_refs", []).append(msg.message_id)
         state_ref = str(self.run.path / "runtime_state" / "state.json")
         runtime_summary.setdefault("kernel", {})
@@ -824,9 +879,10 @@ class AgentRuntime:
         }
         report = ReportGenerator().build(
             metadata,
-            [decision.finding for decision in accepted],
+            [decision.finding for decision in active_decisions],
             evidence_chains,
             runtime=runtime_summary,
+            verification_candidates=[decision.finding for decision in decisions],
         )
         report_path = self.artifacts.write_json("reports", "report.json", report.to_dict(), reporting_task)
         markdown_path = self.artifacts.write_text("reports", "report.md", ReportGenerator().to_markdown(report), reporting_task)
@@ -837,6 +893,7 @@ class AgentRuntime:
             "candidate_count": len(candidates),
             "rejected_count": len([decision for decision in decisions if decision.decision == "reject"]),
             "validated_count": len(accepted),
+            **status_counts,
             "validation_level_distribution": {config.default_validation_level: len(accepted)},
             "runtime_state_ref": str(self.run.path / "runtime_state" / "state.json"),
         }

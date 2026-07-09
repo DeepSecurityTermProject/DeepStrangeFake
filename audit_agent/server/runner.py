@@ -19,6 +19,7 @@ def build_audit_config(request: ScanRunRequest, cwd: str | Path | None = None) -
     load_integration_environment(config, cwd=cwd)
     if request.validation_level:
         config.default_validation_level = request.validation_level
+    config.sandbox.enabled = request.sandbox_enabled
     if request.runtime:
         config.runtime_enabled = True
     if request.llm_provider:

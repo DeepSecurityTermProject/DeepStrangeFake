@@ -41,7 +41,7 @@ export function RunDetailTabs({ job, runtimeState, replaySummary, reportJson, ma
         ))}
       </div>
       <div className="tab-panel">
-        {activeTab === "summary" && <SummaryTab job={job} />}
+        {activeTab === "summary" && <SummaryTab job={job} reportJson={reportJson} />}
         {activeTab === "findings" && <FindingsTab reportJson={reportJson} />}
         {activeTab === "runtime" && <RuntimeTasksTab runtimeState={runtimeState} />}
         {activeTab === "replay" && <ReplayTab replaySummary={replaySummary} />}
@@ -51,8 +51,9 @@ export function RunDetailTabs({ job, runtimeState, replaySummary, reportJson, ma
   );
 }
 
-function SummaryTab({ job }: { job: JobStatusResponse }) {
+function SummaryTab({ job, reportJson }: { job: JobStatusResponse; reportJson?: AuditReport }) {
   const summary = job.summary ?? {};
+  const reportSummary = reportJson?.executive_summary ?? {};
   return (
     <div className="summary-grid">
       <Metric label="Status" value={<StatusBadge status={job.status} />} />
@@ -61,6 +62,9 @@ function SummaryTab({ job }: { job: JobStatusResponse }) {
       <Metric label="Candidates" value={stringValue(summary.candidate_count)} />
       <Metric label="Rejected" value={stringValue(summary.rejected_count)} />
       <Metric label="Validated" value={stringValue(summary.validated_count)} />
+      <Metric label="Confirmed" value={stringValue(valueFrom(summary, reportSummary, "confirmed_count"))} />
+      <Metric label="Likely" value={stringValue(valueFrom(summary, reportSummary, "likely_count"))} />
+      <Metric label="Manual required" value={stringValue(valueFrom(summary, reportSummary, "manual_required_count"))} />
       <Metric label="Runtime state" value={stringValue(summary.runtime_state_ref)} />
       {job.error && <Metric label="Error" value={job.error} />}
     </div>
@@ -68,7 +72,7 @@ function SummaryTab({ job }: { job: JobStatusResponse }) {
 }
 
 function FindingsTab({ reportJson }: { reportJson?: AuditReport }) {
-  const findings = reportJson?.findings ?? [];
+  const findings = reportJson?.verification_candidates ?? reportJson?.findings ?? [];
   if (!reportJson) {
     return <EmptyState title="Report JSON is not available" />;
   }
@@ -84,13 +88,32 @@ function FindingsTab({ reportJson }: { reportJson?: AuditReport }) {
               <h3>{finding.title ?? "Untitled finding"}</h3>
               <p>{finding.vulnerability_class ?? "unknown class"}</p>
             </div>
-            <span className={`severity severity-${finding.severity ?? "unknown"}`}>{finding.severity ?? "unknown"}</span>
+            <div className="finding-badges">
+              {finding.verification_status && <span className={`verification-status verification-${finding.verification_status}`}>{statusLabel(finding.verification_status)}</span>}
+              <span className={`severity severity-${finding.severity ?? "unknown"}`}>{finding.severity ?? "unknown"}</span>
+            </div>
           </div>
           <dl className="compact-list">
             <dt>Location</dt>
             <dd>{formatLocation(finding.location)}</dd>
+            <dt>Status</dt>
+            <dd>{statusLabel(finding.verification_status) || "n/a"}</dd>
+            <dt>Reason</dt>
+            <dd>{finding.verification_reason ?? "n/a"}</dd>
             <dt>Confidence</dt>
             <dd>{finding.confidence === undefined ? "n/a" : `${Math.round(finding.confidence * 100)}%`}</dd>
+            <dt>Exit code</dt>
+            <dd>{stringValue(validationValue(finding, "exit_code"))}</dd>
+            <dt>Judge</dt>
+            <dd>{stringValue(validationValue(finding, "judge_reason"))}</dd>
+            <dt>stdout</dt>
+            <dd>{stringValue(validationValue(finding, "stdout_preview"))}</dd>
+            <dt>stderr</dt>
+            <dd>{stringValue(validationValue(finding, "stderr_preview"))}</dd>
+            <dt>PoC refs</dt>
+            <dd>{formatRefs(validationValue(finding, "poc_refs"))}</dd>
+            <dt>Sandbox refs</dt>
+            <dd>{formatRefs(validationValue(finding, "sandbox_result_refs"))}</dd>
             <dt>Evidence</dt>
             <dd>{finding.evidence?.join(" | ") || "n/a"}</dd>
             <dt>Remediation</dt>
@@ -185,6 +208,31 @@ function stringValue(value: unknown): string {
     return "n/a";
   }
   return String(value);
+}
+
+function valueFrom(primary: Record<string, unknown>, secondary: Record<string, unknown>, key: string): unknown {
+  return primary[key] ?? secondary[key];
+}
+
+function validationValue(finding: { validation?: Record<string, unknown> }, key: string): unknown {
+  return finding.validation?.[key];
+}
+
+function formatRefs(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length ? value.join(" | ") : "n/a";
+  }
+  return stringValue(value);
+}
+
+function statusLabel(status?: string): string {
+  if (!status) {
+    return "";
+  }
+  return status
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function formatLocation(location?: { path?: string; start_line?: number; end_line?: number }): string {

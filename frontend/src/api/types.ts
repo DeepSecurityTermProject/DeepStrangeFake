@@ -13,6 +13,7 @@ export interface ScanRunRequest {
   memory_mode?: MemoryMode;
   mcp_mode?: McpMode;
   validation_level?: ValidationLevel;
+  sandbox_enabled?: boolean;
   include_patterns?: string[];
   exclude_patterns?: string[];
   output?: string;
@@ -82,11 +83,15 @@ export interface ReportFinding {
   location?: { path?: string; start_line?: number; end_line?: number };
   evidence?: string[];
   remediation?: string;
+  verification_status?: string;
+  verification_reason?: string;
+  validation?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
 export interface AuditReport {
   executive_summary?: Record<string, unknown>;
   findings?: ReportFinding[];
+  verification_candidates?: ReportFinding[];
   [key: string]: unknown;
 }
