@@ -12,3 +12,7 @@ external/cve-mcp-server/
 .npm-cache/
 frontend/node_modules/
 frontend/dist/
+.codex/
+openspec/
+test/
+tests/
