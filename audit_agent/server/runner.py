@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..config import AuditConfig
+from ..integration import load_integration_environment
 from ..pipeline import run_audit
 from .job_store import JobStore
 from .schemas import ScanRunRequest
@@ -13,8 +14,9 @@ from .schemas import ScanRunRequest
 RunAuditFunc = Callable[[str, AuditConfig, str | Path], dict]
 
 
-def build_audit_config(request: ScanRunRequest) -> AuditConfig:
+def build_audit_config(request: ScanRunRequest, cwd: str | Path | None = None) -> AuditConfig:
     config = AuditConfig.default()
+    load_integration_environment(config, cwd=cwd)
     if request.validation_level:
         config.default_validation_level = request.validation_level
     if request.runtime:

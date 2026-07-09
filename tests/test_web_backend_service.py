@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import anyio
 import httpx
@@ -46,6 +47,61 @@ class ImmediateRunningRunner:
 
 
 class WebBackendApiTests(unittest.TestCase):
+    def test_health_endpoint_returns_non_secret_service_metadata(self):
+        from audit_agent.server.app import create_app
+        from audit_agent.server.job_store import JobStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            client = make_client(
+                create_app(job_store=JobStore(Path(tmp) / "jobs.json"), runner=RecordingRunner())
+            )
+
+            response = client.get("/api/health")
+            payload = response.json()
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(payload["status"], "ok")
+            self.assertEqual(payload["service"], "agentic-security-audit-api")
+            self.assertIn("api_version", payload)
+            self.assertNotIn("key", json.dumps(payload).lower())
+            self.assertNotIn("token", json.dumps(payload).lower())
+
+    def test_options_endpoint_returns_values_accepted_by_create_run(self):
+        from audit_agent.server.app import create_app
+        from audit_agent.server.job_store import JobStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = RecordingRunner()
+            store = JobStore(Path(tmp) / "jobs.json")
+            client = make_client(create_app(job_store=store, runner=runner))
+
+            options_response = client.get("/api/options")
+            options = options_response.json()
+
+            self.assertEqual(options_response.status_code, 200)
+            self.assertIn("mock", options["provider_modes"])
+            self.assertIn("lexical", options["memory_modes"])
+            self.assertIn("off", options["mcp_modes"])
+            self.assertIn("static-only", options["validation_levels"])
+            self.assertIn("analysis", options["llm_decision_roles"])
+            self.assertNotIn("api_key", json.dumps(options).lower())
+
+            create_response = client.post(
+                "/api/runs",
+                json={
+                    "target": "fixtures/integration_smoke",
+                    "runtime": True,
+                    "llm_provider": options["provider_modes"][0],
+                    "llm_decisions": True,
+                    "llm_decision_roles": options["llm_decision_roles"][:2],
+                    "memory_mode": "lexical",
+                    "mcp_mode": "off",
+                    "validation_level": "static-only",
+                },
+            )
+
+            self.assertEqual(create_response.status_code, 202)
+
     def test_create_run_validates_payload_stores_job_and_submits_runner(self):
         from audit_agent.server.app import create_app
         from audit_agent.server.job_store import JobStore
@@ -177,6 +233,36 @@ class WebBackendJobStoreTests(unittest.TestCase):
 
 
 class WebBackendRunnerTests(unittest.TestCase):
+    def test_request_loads_llm_aliases_from_dotenv(self):
+        from audit_agent.server.runner import build_audit_config
+        from audit_agent.server.schemas import ScanRunRequest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".env").write_text(
+                "\n".join(
+                    [
+                        "LLM_API_KEY=alias-secret-value",
+                        "LLM_API_BASE_URL=https://alias.example/v1",
+                        "LLM_MODEL=alias-model",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            request = ScanRunRequest(
+                target="fixtures/integration_smoke",
+                runtime=True,
+                llm_provider="openai-compatible",
+            )
+
+            with patch.dict("os.environ", {}, clear=True):
+                config = build_audit_config(request, cwd=root)
+
+        self.assertEqual(config.llm.provider, "openai-compatible")
+        self.assertEqual(config.llm.api_key_env, "LLM_API_KEY")
+        self.assertEqual(config.llm.base_url, "https://alias.example/v1")
+        self.assertEqual(config.llm.model, "alias-model")
+
     def test_request_maps_to_audit_config(self):
         from audit_agent.server.runner import build_audit_config
         from audit_agent.server.schemas import ScanRunRequest

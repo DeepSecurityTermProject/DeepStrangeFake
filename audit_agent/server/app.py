@@ -28,6 +28,20 @@ def create_app(
     scan_runner = runner or ScanJobRunner(store)
     app = FastAPI(title="Agentic Security Audit API")
 
+    @app.get("/api/health")
+    def health():
+        return {"service": "agentic-security-audit-api", "status": "ok", "api_version": "v1"}
+
+    @app.get("/api/options")
+    def options():
+        return {
+            "provider_modes": ["mock", "openai-compatible"],
+            "memory_modes": ["lexical", "embedding", "off"],
+            "mcp_modes": ["on", "degraded", "off"],
+            "validation_levels": ["static-only", "poc-generate", "sandbox", "manual"],
+            "llm_decision_roles": ["orchestrator", "recon", "analysis", "verification"],
+        }
+
     @app.post("/api/runs", response_model=CreateRunResponse, status_code=status.HTTP_202_ACCEPTED)
     def create_run(request: ScanRunRequest):
         selected_output = Path(request.output or output_root)

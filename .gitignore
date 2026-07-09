@@ -9,3 +9,6 @@ runs/
 .env.*
 !.env.example
 external/cve-mcp-server/
+.npm-cache/
+frontend/node_modules/
+frontend/dist/

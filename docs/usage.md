@@ -39,11 +39,16 @@ JSON/Markdown reports, message logs, and `runtime_state/state.json`.
 
 ## Local Web Backend
 
-Start the FastAPI backend for local demos or a future UI:
+Start the FastAPI backend for local demos and the web UI:
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn audit_agent.server.app:app --host 127.0.0.1 --port 8000
 ```
+
+For Real provider scans started through the web API, the backend loads `.env`
+from the server working directory. Supported model settings include
+`LLM_API_KEY`, `LLM_API_BASE_URL`, and `LLM_MODEL`. API keys still stay out of
+HTTP requests; omit `model` in the UI/API request to use `LLM_MODEL`.
 
 Create a mock scan job:
 
@@ -72,6 +77,63 @@ Invoke-RestMethod http://127.0.0.1:8000/api/runs/<job_id>/reports/report.md
 The backend is intentionally local-first. It does not accept API keys in HTTP
 requests, and report/runtime endpoints only read fixed files under the run
 directory associated with a known job.
+
+## Local Web Frontend
+
+Install and run the Vite + React + TypeScript frontend:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open the frontend at:
+
+```text
+http://127.0.0.1:5173/
+```
+
+If local policy blocks port `8000`, start the backend on another high port and
+point the Vite proxy to it:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn audit_agent.server.app:app --host 127.0.0.1 --port 18000
+cd frontend
+$env:VITE_API_PROXY_TARGET = "http://127.0.0.1:18000"
+npm run dev -- --port 18173
+```
+
+The UI supports:
+
+- creating scan runs with target, runtime, provider, LLM decisions, memory, MCP,
+  and validation controls;
+- browsing queued, running, succeeded, and failed jobs;
+- opening run details with Summary, Findings, Runtime Tasks, Replay, and
+  Markdown Report tabs;
+- polling run status until `succeeded` or `failed`, then loading runtime,
+  replay, and report artifacts.
+
+Run frontend verification:
+
+```powershell
+cd frontend
+npm test
+npm run typecheck
+npm run build
+```
+
+Run a real local UI smoke against a live backend:
+
+```powershell
+cd frontend
+$env:VITE_E2E_API_URL = "http://127.0.0.1:18000"
+npm run test:smoke
+```
+
+The smoke renders the full React app, creates a mock scan through the UI,
+polls the backend run to completion, and opens the Runtime Tasks, Replay, and
+Markdown Report tabs.
 
 ## LLM Runtime Mode
 
