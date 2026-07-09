@@ -34,7 +34,8 @@ describe("CreateScanPage", () => {
       memory_modes: ["lexical", "embedding", "off"],
       mcp_modes: ["on", "degraded", "off"],
       validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
-      llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"]
+      llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"],
+      default_exclude_patterns: ["tests/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"]
     });
     vi.mocked(apiClient.createRun).mockResolvedValue({
       job_id: "JOB-1",
@@ -63,6 +64,10 @@ describe("CreateScanPage", () => {
     await userEvent.selectOptions(screen.getByLabelText(/memory/i), "lexical");
     await userEvent.selectOptions(screen.getByLabelText(/mcp/i), "off");
     await userEvent.selectOptions(screen.getByLabelText(/validation/i), "static-only");
+    await userEvent.clear(screen.getByLabelText(/include patterns/i));
+    await userEvent.type(screen.getByLabelText(/include patterns/i), "src/**\napp.py");
+    await userEvent.clear(screen.getByLabelText(/exclude patterns/i));
+    await userEvent.type(screen.getByLabelText(/exclude patterns/i), "tests/**\nfixtures/**");
     await userEvent.click(screen.getByRole("button", { name: /create scan/i }));
 
     await waitFor(() => expect(apiClient.createRun).toHaveBeenCalled());
@@ -75,7 +80,9 @@ describe("CreateScanPage", () => {
       llm_decisions: true,
       memory_mode: "lexical",
       mcp_mode: "off",
-      validation_level: "static-only"
+      validation_level: "static-only",
+      include_patterns: ["src/**", "app.py"],
+      exclude_patterns: ["tests/**", "fixtures/**"]
     });
     expect(JSON.stringify(payload).toLowerCase()).not.toContain("api_key");
   });

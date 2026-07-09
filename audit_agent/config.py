@@ -7,6 +7,15 @@ from typing import Any
 
 from .models import to_plain
 
+DEFAULT_AUDIT_EXCLUDE_PATTERNS = [
+    "tests/**",
+    "test/**",
+    "fixtures/**",
+    "external/**",
+    "openspec/**",
+    ".codex/**",
+]
+
 
 @dataclass
 class LlmConfig:
@@ -148,7 +157,7 @@ class AuditScope:
         ]
     )
     include_patterns: list[str] = field(default_factory=list)
-    exclude_patterns: list[str] = field(default_factory=list)
+    exclude_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_AUDIT_EXCLUDE_PATTERNS))
     analysis_budget: int = 100
     tool_budget: int = 80
     cve_query_budget: int = 50

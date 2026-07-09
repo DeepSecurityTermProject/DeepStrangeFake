@@ -4,10 +4,13 @@ import json
 import os
 import re
 import subprocess
+import fnmatch
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
+from .config import DEFAULT_AUDIT_EXCLUDE_PATTERNS, AuditScope
 from .models import AttackSurface, AuditTarget, Dependency, RepositoryMetadata
 
 
@@ -50,6 +53,13 @@ IGNORED_DIRS = {
 }
 
 
+@dataclass(frozen=True)
+class _IgnoreRule:
+    pattern: str
+    negated: bool = False
+    directory_only: bool = False
+
+
 def parse_target(source: str) -> AuditTarget:
     parsed = urlparse(source)
     if parsed.scheme in {"http", "https", "ssh"} and parsed.netloc:
@@ -64,18 +74,24 @@ def parse_target(source: str) -> AuditTarget:
     return AuditTarget(source=source, kind="local", path=str(path.resolve()))
 
 
-def analyze_target(source: str, allow_clone: bool = False, checkout_dir: str | Path | None = None) -> RepositoryMetadata:
+def analyze_target(
+    source: str,
+    allow_clone: bool = False,
+    checkout_dir: str | Path | None = None,
+    audit_scope: AuditScope | None = None,
+) -> RepositoryMetadata:
+    scope = audit_scope or AuditScope()
     target = parse_target(source)
     if target.kind != "local":
         if allow_clone:
             checkout_path, commit = checkout_remote_target(target, checkout_dir)
             target.path = str(checkout_path)
             target.commit = commit
-            return _analyze_local_path(target, checkout_path)
+            return _analyze_local_path(target, checkout_path, scope)
         return RepositoryMetadata(target=target)
 
     path = Path(target.path or source).resolve()
-    return _analyze_local_path(target, path)
+    return _analyze_local_path(target, path, scope)
 
 
 def checkout_remote_target(
@@ -100,13 +116,14 @@ def checkout_remote_target(
     return destination, commit
 
 
-def _analyze_local_path(target: AuditTarget, path: Path) -> RepositoryMetadata:
+def _analyze_local_path(target: AuditTarget, path: Path, scope: AuditScope) -> RepositoryMetadata:
     if not path.exists() or not path.is_dir():
         raise FileNotFoundError(f"Target directory does not exist: {path}")
-    file_tree = list(_file_tree(path))
+    file_tree = list(_file_tree(path, scope))
+    file_categories = {relative: source_category(relative) for relative in file_tree}
     languages = _detect_languages(path, file_tree)
     dominant_language = max(languages.items(), key=lambda item: item[1])[0] if languages else None
-    dependencies = _discover_dependencies(path)
+    dependencies = _discover_dependencies(path, file_tree)
     attack_surfaces = _discover_attack_surfaces(path, file_tree)
     commit = _git_commit(path)
     target.commit = commit
@@ -118,18 +135,22 @@ def _analyze_local_path(target: AuditTarget, path: Path) -> RepositoryMetadata:
         dominant_language=dominant_language,
         languages=languages,
         file_tree=file_tree,
+        file_categories=file_categories,
         dependencies=dependencies,
         attack_surfaces=attack_surfaces,
     )
 
 
-def _file_tree(root: Path) -> Iterable[str]:
+def _file_tree(root: Path, scope: AuditScope) -> Iterable[str]:
+    gitignore_rules = _load_gitignore(root)
     for current, dirs, files in os.walk(root):
         dirs[:] = [dirname for dirname in dirs if dirname not in IGNORED_DIRS]
         for filename in sorted(files):
             full_path = Path(current) / filename
             relative = full_path.relative_to(root).as_posix()
             if any(part in IGNORED_DIRS for part in relative.split("/")):
+                continue
+            if not _included_by_scope(relative, scope, gitignore_rules):
                 continue
             yield relative
 
@@ -151,20 +172,17 @@ def _detect_languages(root: Path, file_tree: list[str]) -> dict[str, int]:
     return dict(sorted(languages.items(), key=lambda item: item[1], reverse=True))
 
 
-def _discover_dependencies(root: Path) -> list[Dependency]:
+def _discover_dependencies(root: Path, file_tree: list[str]) -> list[Dependency]:
     dependencies: list[Dependency] = []
-    for manifest in root.rglob("requirements.txt"):
-        if _is_ignored(manifest, root):
-            continue
+    manifest_paths = [root / relative for relative in file_tree]
+    for manifest in [path for path in manifest_paths if path.name == "requirements.txt"]:
         for line in manifest.read_text(encoding="utf-8", errors="ignore").splitlines():
             parsed = _parse_requirement(line)
             if parsed:
                 name, version = parsed
                 dependencies.append(_dependency("pypi", name, version, manifest, root))
 
-    for manifest in root.rglob("package.json"):
-        if _is_ignored(manifest, root):
-            continue
+    for manifest in [path for path in manifest_paths if path.name == "package.json"]:
         try:
             payload = json.loads(manifest.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
@@ -173,18 +191,14 @@ def _discover_dependencies(root: Path) -> list[Dependency]:
             for name, version in payload.get(section, {}).items():
                 dependencies.append(_dependency("npm", name, str(version), manifest, root))
 
-    for manifest in root.rglob("go.mod"):
-        if _is_ignored(manifest, root):
-            continue
+    for manifest in [path for path in manifest_paths if path.name == "go.mod"]:
         for line in manifest.read_text(encoding="utf-8", errors="ignore").splitlines():
             if line.strip().startswith("require "):
                 parts = line.split()
                 if len(parts) >= 3:
                     dependencies.append(_dependency("go", parts[1], parts[2], manifest, root))
 
-    for manifest in root.rglob("Cargo.toml"):
-        if _is_ignored(manifest, root):
-            continue
+    for manifest in [path for path in manifest_paths if path.name == "Cargo.toml"]:
         in_dependencies = False
         for line in manifest.read_text(encoding="utf-8", errors="ignore").splitlines():
             stripped = line.strip()
@@ -264,6 +278,83 @@ def _is_ignored(path: Path, root: Path) -> bool:
     except ValueError:
         return True
     return any(part in IGNORED_DIRS for part in relative.parts)
+
+
+def _load_gitignore(root: Path) -> list[_IgnoreRule]:
+    path = root / ".gitignore"
+    if not path.exists():
+        return []
+    rules: list[_IgnoreRule] = []
+    for raw_line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        negated = line.startswith("!")
+        if negated:
+            line = line[1:].strip()
+        line = line.lstrip("/")
+        directory_only = line.endswith("/")
+        if directory_only:
+            line = line.rstrip("/")
+        if line:
+            rules.append(_IgnoreRule(line, negated=negated, directory_only=directory_only))
+    return rules
+
+
+def _included_by_scope(relative: str, scope: AuditScope, gitignore_rules: list[_IgnoreRule]) -> bool:
+    include_patterns = [pattern for pattern in scope.include_patterns if pattern]
+    if include_patterns:
+        explicit_excludes = [
+            pattern
+            for pattern in scope.exclude_patterns
+            if pattern and pattern not in set(DEFAULT_AUDIT_EXCLUDE_PATTERNS)
+        ]
+        return _matches_any(relative, include_patterns) and not _matches_any(relative, explicit_excludes)
+    if _matches_gitignore(relative, gitignore_rules):
+        return False
+    return not _matches_any(relative, scope.exclude_patterns)
+
+
+def _matches_gitignore(relative: str, rules: list[_IgnoreRule]) -> bool:
+    ignored = False
+    for rule in rules:
+        if _match_pattern(relative, rule.pattern, directory_only=rule.directory_only):
+            ignored = not rule.negated
+    return ignored
+
+
+def _matches_any(relative: str, patterns: list[str]) -> bool:
+    return any(_match_pattern(relative, pattern) for pattern in patterns)
+
+
+def _match_pattern(relative: str, pattern: str, directory_only: bool = False) -> bool:
+    normalized = pattern.replace("\\", "/").lstrip("/")
+    relative = relative.replace("\\", "/")
+    if not normalized:
+        return False
+    if normalized.endswith("/**"):
+        prefix = normalized[:-3].rstrip("/")
+        return relative == prefix or relative.startswith(f"{prefix}/")
+    if normalized.endswith("/"):
+        normalized = normalized.rstrip("/")
+        directory_only = True
+    if directory_only:
+        return relative == normalized or relative.startswith(f"{normalized}/")
+    if "/" not in normalized:
+        return fnmatch.fnmatch(Path(relative).name, normalized) or normalized in relative.split("/")
+    return fnmatch.fnmatch(relative, normalized)
+
+
+def source_category(relative: str) -> str:
+    parts = [part.lower() for part in relative.replace("\\", "/").split("/") if part]
+    name = parts[-1] if parts else ""
+    if any(part in {"external", "vendor", "node_modules"} for part in parts):
+        return "external"
+    if any(part in {"fixtures", "fixture"} for part in parts):
+        return "fixture"
+    if any(part in {"tests", "test"} for part in parts) or name.startswith("test_") or "_test." in name:
+        return "test"
+    return "product-code"
 
 
 def _git_commit(path: Path) -> str | None:

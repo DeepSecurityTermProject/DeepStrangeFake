@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import PlainTextResponse
 
+from ..config import AuditConfig
 from .artifacts import (
     ArtifactAccessDenied,
     ArtifactUnavailable,
@@ -40,6 +41,7 @@ def create_app(
             "mcp_modes": ["on", "degraded", "off"],
             "validation_levels": ["static-only", "poc-generate", "sandbox", "manual"],
             "llm_decision_roles": ["orchestrator", "recon", "analysis", "verification"],
+            "default_exclude_patterns": AuditConfig.default().audit_scope.exclude_patterns,
         }
 
     @app.post("/api/runs", response_model=CreateRunResponse, status_code=status.HTTP_202_ACCEPTED)

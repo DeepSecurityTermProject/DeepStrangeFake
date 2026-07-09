@@ -93,6 +93,7 @@ class RepositoryMetadata:
     dominant_language: str | None = None
     languages: dict[str, int] = field(default_factory=dict)
     file_tree: list[str] = field(default_factory=list)
+    file_categories: dict[str, str] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
     attack_surfaces: list[AttackSurface] = field(default_factory=list)
     generated_at: str = field(default_factory=utc_now)

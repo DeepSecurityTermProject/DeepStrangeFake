@@ -297,6 +297,18 @@ Run a scan as usual:
 .\.venv\Scripts\python.exe -m audit_agent scan --target fixtures/integration_smoke --runtime --llm-provider mock
 ```
 
+Limit repository scope from the CLI when scanning large trees:
+
+```powershell
+.\.venv\Scripts\python.exe -m audit_agent scan --target D:\path\to\project --include "src/**" --exclude "legacy/**"
+```
+
+By default, repository analysis respects the target root `.gitignore` and
+excludes local development or benchmark-only directories such as `tests/`,
+`fixtures/`, `external/`, `openspec/`, and `.codex/`. Use include patterns to
+scan an excluded subtree intentionally, for example `--include "fixtures/**"`.
+Reports mark each finding as `product-code`, `fixture`, `test`, or `external`.
+
 Each accepted dataflow-backed finding keeps only a compact summary in
 `call_path` and report fields. The complete trace is stored as an immutable JSON
 artifact under:

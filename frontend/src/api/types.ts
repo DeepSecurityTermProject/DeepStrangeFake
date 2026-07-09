@@ -13,6 +13,8 @@ export interface ScanRunRequest {
   memory_mode?: MemoryMode;
   mcp_mode?: McpMode;
   validation_level?: ValidationLevel;
+  include_patterns?: string[];
+  exclude_patterns?: string[];
   output?: string;
 }
 
@@ -45,6 +47,7 @@ export interface ApiOptions {
   mcp_modes: McpMode[];
   validation_levels: ValidationLevel[];
   llm_decision_roles: string[];
+  default_exclude_patterns: string[];
 }
 
 export interface RuntimeTask {

@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .models import EvidenceChain, Finding, Report, RepositoryMetadata
+from .repository import source_category
 
 
 REMEDIATION = {
@@ -24,9 +25,16 @@ class ReportGenerator:
     ) -> Report:
         evidence_by_finding = {chain.finding_id: chain for chain in evidence_chains}
         report_findings: list[dict[str, Any]] = []
+        source_category_distribution: dict[str, int] = {}
         for finding in findings:
             chain = evidence_by_finding.get(finding.id or "")
             item = finding.to_dict()
+            category = finding.metadata.get("source_category") or metadata.file_categories.get(
+                finding.location.path,
+                source_category(finding.location.path),
+            )
+            item["source_category"] = category
+            source_category_distribution[category] = source_category_distribution.get(category, 0) + 1
             item["remediation"] = item.get("remediation") or REMEDIATION.get(
                 finding.vulnerability_class, "Review and fix the affected code path."
             )
@@ -68,6 +76,7 @@ class ReportGenerator:
             "finding_count": len(report_findings),
             "validated_count": sum(1 for item in report_findings if item.get("verifier_decision") == "accept"),
             "languages": metadata.languages,
+            "source_category_distribution": source_category_distribution,
         }
         return Report(
             target_metadata=metadata.to_dict(),
@@ -103,6 +112,7 @@ class ReportGenerator:
                     f"- Severity: {finding['severity']}",
                     f"- Confidence: {finding['confidence']}",
                     f"- Location: {finding['location']['path']}:{finding['location']['start_line']}",
+                    f"- Source category: {finding.get('source_category', 'product-code')}",
                     f"- Validation: {finding.get('validation', {}).get('level', finding.get('validation_level'))}",
                     f"- Remediation: {finding['remediation']}",
                 ]

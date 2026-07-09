@@ -426,7 +426,7 @@ class AgentRuntime:
 
     def run_audit(self, target: str) -> dict[str, Any]:
         config = self.config
-        metadata = analyze_target(target)
+        metadata = analyze_target(target, audit_scope=config.audit_scope)
         store = RunStore(self.output_dir)
         self.run = store.create_run(metadata.target.repo or Path(metadata.target.path or target).name)
         self.run_state = RunState(

@@ -10,8 +10,16 @@ const DEFAULT_OPTIONS: ApiOptions = {
   memory_modes: ["lexical", "embedding", "off"],
   mcp_modes: ["on", "degraded", "off"],
   validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
-  llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"]
+  llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"],
+  default_exclude_patterns: ["tests/**", "test/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"]
 };
+
+function parsePatterns(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 export function CreateScanPage() {
   const navigate = useNavigate();
@@ -24,6 +32,8 @@ export function CreateScanPage() {
   const [memoryMode, setMemoryMode] = useState<MemoryMode>("lexical");
   const [mcpMode, setMcpMode] = useState<McpMode>("off");
   const [validationLevel, setValidationLevel] = useState<ValidationLevel>("static-only");
+  const [includePatterns, setIncludePatterns] = useState("");
+  const [excludePatterns, setExcludePatterns] = useState(DEFAULT_OPTIONS.default_exclude_patterns.join("\n"));
   const [targetError, setTargetError] = useState("");
 
   const optionsQuery = useQuery({
@@ -61,6 +71,8 @@ export function CreateScanPage() {
       memory_mode: memoryMode,
       mcp_mode: mcpMode,
       validation_level: validationLevel,
+      include_patterns: parsePatterns(includePatterns),
+      exclude_patterns: parsePatterns(excludePatterns),
       ...(requestedModel ? { model: requestedModel } : {})
     });
   }
@@ -172,6 +184,17 @@ export function CreateScanPage() {
             ))}
           </fieldset>
         )}
+
+        <div className="form-grid scope-grid">
+          <label className="field">
+            <span>Include patterns</span>
+            <textarea value={includePatterns} onChange={(event) => setIncludePatterns(event.target.value)} rows={4} />
+          </label>
+          <label className="field">
+            <span>Exclude patterns</span>
+            <textarea value={excludePatterns} onChange={(event) => setExcludePatterns(event.target.value)} rows={4} />
+          </label>
+        </div>
 
         {createRun.error && <div className="form-error">{String(createRun.error)}</div>}
         <button className="primary-action" type="submit" disabled={createRun.isPending}>

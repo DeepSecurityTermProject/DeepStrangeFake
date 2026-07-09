@@ -9,6 +9,7 @@ runs/
 .env.*
 !.env.example
 external/cve-mcp-server/
+external/
 .npm-cache/
 frontend/node_modules/
 frontend/dist/
@@ -16,3 +17,4 @@ frontend/dist/
 openspec/
 test/
 tests/
+fixtures/

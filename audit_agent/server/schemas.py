@@ -24,6 +24,8 @@ class ScanRunRequest(StrictModel):
     memory_mode: MemoryMode | None = None
     mcp_mode: McpMode | None = None
     validation_level: ValidationLevel | None = None
+    include_patterns: list[str] | None = None
+    exclude_patterns: list[str] | None = None
     output: str | None = None
 
 

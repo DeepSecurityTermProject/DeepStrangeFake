@@ -108,7 +108,7 @@
       "hardcoded-secret"
     ],
     "include_patterns": [],
-    "exclude_patterns": [],
+    "exclude_patterns": ["tests/**", "test/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"],
     "analysis_budget": 100,
     "tool_budget": 80,
     "cve_query_budget": 50

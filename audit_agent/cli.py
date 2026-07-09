@@ -54,6 +54,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="MCP mode. degraded keeps audit running when server is unavailable.",
     )
+    scan.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        help="Repository-relative include glob. Repeat to set multiple include patterns.",
+    )
+    scan.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help="Repository-relative exclude glob. Repeat to add exclusion patterns.",
+    )
 
     benchmark = subparsers.add_parser("benchmark", help="Run a configured benchmark corpus.")
     benchmark.add_argument("--benchmark-config", default=None, help="Benchmark JSON file.")
@@ -163,6 +175,10 @@ def _apply_runtime_args(config: AuditConfig, args) -> None:
     if args.mcp_mode:
         config.mcp.enabled = args.mcp_mode != "off"
         config.mcp.degraded_mode = args.mcp_mode in {"degraded", "on"}
+    if getattr(args, "include", None):
+        config.audit_scope.include_patterns.extend(args.include)
+    if getattr(args, "exclude", None):
+        config.audit_scope.exclude_patterns.extend(args.exclude)
 
 
 def _add_integration_flags(parser: argparse.ArgumentParser) -> None:

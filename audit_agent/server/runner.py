@@ -36,6 +36,10 @@ def build_audit_config(request: ScanRunRequest, cwd: str | Path | None = None) -
     if request.mcp_mode:
         config.mcp.enabled = request.mcp_mode != "off"
         config.mcp.degraded_mode = request.mcp_mode in {"degraded", "on"}
+    if request.include_patterns is not None:
+        config.audit_scope.include_patterns = list(request.include_patterns)
+    if request.exclude_patterns is not None:
+        config.audit_scope.exclude_patterns = list(request.exclude_patterns)
     return config
 
 
