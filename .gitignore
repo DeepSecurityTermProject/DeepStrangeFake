@@ -14,7 +14,4 @@ external/
 frontend/node_modules/
 frontend/dist/
 .codex/
-openspec/
-test/
-tests/
 fixtures/

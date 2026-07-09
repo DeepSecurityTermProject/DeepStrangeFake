@@ -274,6 +274,26 @@ class VerificationAgent:
                 continue
 
             if finding.metadata.get("dataflow_status") == "sanitized-flow":
+                if (
+                    finding.vulnerability_class == "sql-injection"
+                    and self.config.default_validation_level == "sandbox"
+                    and self.config.sandbox.enabled
+                ):
+                    priority = _priority(finding, related)
+                    finding.verifier_decision = "accept"
+                    finding.validation_level = "sandbox"
+                    decisions.append(
+                        VerificationDecision(
+                            finding=finding,
+                            decision="accept",
+                            reason="Accepted for sandbox SQLi parameter-binding verification.",
+                            confidence=min(max(finding.confidence, 0.55), 0.8),
+                            validation_level="sandbox",
+                            priority=priority,
+                            intelligence_refs=[item.id for item in related],
+                        )
+                    )
+                    continue
                 decisions.append(
                     VerificationDecision(
                         finding=finding,

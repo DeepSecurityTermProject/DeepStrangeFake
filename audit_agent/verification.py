@@ -109,6 +109,74 @@ class PathTraversalPoCGenerator:
         return poc
 
 
+class SQLInjectionPoCGenerator:
+    generator_id = "sql-injection-dataflow-v1"
+
+    def __init__(self) -> None:
+        self.failure_reason = ""
+
+    def generate(
+        self,
+        finding: Finding,
+        metadata: RepositoryMetadata,
+        run_dir: str | Path,
+        attempt_index: int = 1,
+        repair_context: dict[str, Any] | None = None,
+    ) -> PoCArtifact | None:
+        self.failure_reason = ""
+        if finding.vulnerability_class != "sql-injection":
+            return None
+        if finding.metadata.get("dataflow_status") not in {"complete-flow", "sanitized-flow"}:
+            self.failure_reason = "SQLi PoC requires complete-flow or parameterized sanitized-flow dataflow evidence."
+            return None
+        trace = _load_first_trace(finding)
+        plan, reason = _build_sqli_harness_plan(trace, finding, metadata)
+        if plan is None:
+            self.failure_reason = reason
+            return None
+        root = _attempt_dir(run_dir, finding.id or stable_id("F", finding.title), attempt_index)
+        root.mkdir(parents=True, exist_ok=True)
+        script = immutable_path(root / "poc_sql_injection.py")
+        script.write_text(_sqli_script(plan, repair_context=repair_context), encoding="utf-8")
+        expected_signal = {
+            "kind": "sqli-semantic-result",
+            "result_filename": "sqli-result.json",
+            "target_status": plan["expected_status"],
+            "mode": plan["mode"],
+            "target_expression": plan["sink_expression"],
+            "query_expression": plan["query_expression"],
+        }
+        if repair_context:
+            expected_signal["repair_context"] = {
+                "reason": repair_context.get("reason", ""),
+                "diagnostic": repair_context.get("diagnostic", ""),
+                "prepend_lines": repair_context.get("prepend_lines", []),
+            }
+        poc = PoCArtifact(
+            finding_id=finding.id or "",
+            vulnerability_class=finding.vulnerability_class,
+            generator_id=self.generator_id,
+            script_path=str(script),
+            command_argv=[sys.executable, str(script)],
+            expected_signal=expected_signal,
+            safety_profile={
+                "non_destructive": True,
+                "local_only": True,
+                "writes_under_attempt_dir": True,
+                "sqlite_harness": True,
+                "target_kind": metadata.target.kind,
+                "repair_applied": bool(repair_context),
+            },
+            source_refs=list(finding.metadata.get("local_evidence_refs", [])),
+            dataflow_trace_refs=list(finding.metadata.get("dataflow_trace_refs", [])),
+            target_file_refs=[finding.location.path],
+        )
+        metadata_path = immutable_path(root / "poc.json")
+        poc.metadata_path = str(metadata_path)
+        metadata_path.write_text(json.dumps(poc.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return poc
+
+
 class LocalSandboxRunner:
     def __init__(self, config: AuditConfig, run_dir: str | Path):
         self.config = config
@@ -300,6 +368,8 @@ class VerificationJudge:
                 evidence_refs,
             )
         expected = poc_data.get("expected_signal") or {}
+        if expected.get("kind") == "sqli-semantic-result":
+            return _judge_sqli_semantic_result(expected, result_data, evidence_refs)
         value = str(expected.get("value") or "")
         rejected_value = str(expected.get("rejected_value") or "")
         combined = "\n".join(
@@ -334,6 +404,10 @@ class VerificationEngine:
         self.config = config
         self.run_dir = Path(run_dir)
         self.generator = PathTraversalPoCGenerator()
+        self.generators = {
+            "path-traversal": self.generator,
+            "sql-injection": SQLInjectionPoCGenerator(),
+        }
         self.runner = LocalSandboxRunner(config, self.run_dir)
         self.judge = VerificationJudge()
 
@@ -377,7 +451,8 @@ class VerificationEngine:
             return self._manual_required(finding, selected, "No-live-target policy blocked sandbox validation.")
         if not self.config.sandbox.enabled:
             return self._manual_required(finding, selected, "Sandbox validation requested but sandbox execution is disabled.")
-        if finding.vulnerability_class != "path-traversal":
+        generator = self._generator_for(finding)
+        if generator is None:
             return self._likely(
                 finding,
                 selected,
@@ -387,7 +462,7 @@ class VerificationEngine:
         last_validation: ValidationResult | None = None
         repair_context: dict[str, Any] | None = None
         for attempt_index in range(1, max_attempts + 1):
-            poc = self.generator.generate(
+            poc = generator.generate(
                 finding,
                 metadata,
                 self.run_dir,
@@ -395,10 +470,13 @@ class VerificationEngine:
                 repair_context=repair_context,
             )
             if poc is None:
+                reason = getattr(generator, "failure_reason", "") or (
+                    f"Target {finding.vulnerability_class} harness unavailable; trace must match target code and expose a supported expression."
+                )
                 return self._likely(
                     finding,
                     selected,
-                    "Target path traversal harness unavailable; trace must match target code and expose a supported Python path expression.",
+                    reason,
                 )
             sandbox_result = self.runner.run(poc, attempt_index=attempt_index)
             judge = self.judge.judge(poc, sandbox_result)
@@ -425,6 +503,11 @@ class VerificationEngine:
             if attempt_index >= max_attempts or repair_context is None:
                 return self._finalize(finding, last_validation)
         return self._finalize(finding, last_validation or self._manual_required(finding, selected, "PoC validation did not produce an attempt."))
+
+    def _generator_for(self, finding: Finding):
+        if finding.vulnerability_class == "path-traversal":
+            return self.generator
+        return self.generators.get(finding.vulnerability_class)
 
     def _manual_required(self, finding: Finding, level: str, reason: str) -> ValidationResult:
         return self._finalize(
@@ -579,6 +662,61 @@ def _status_from_item(item: Any) -> str:
     return str(getattr(item, "verification_status", None) or getattr(item, "status", ""))
 
 
+def _judge_sqli_semantic_result(
+    expected: dict[str, Any],
+    result_data: dict[str, Any],
+    evidence_refs: list[str],
+) -> JudgeOutcome:
+    result_name = str(expected.get("result_filename") or "sqli-result.json")
+    result_ref = _find_artifact_by_name(result_data, result_name)
+    if not result_ref:
+        return JudgeOutcome(
+            VerificationStatus.MANUAL_REQUIRED,
+            f"SQLi semantic evidence artifact {result_name} was not produced.",
+            evidence_refs,
+        )
+    try:
+        payload = json.loads(Path(result_ref).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return JudgeOutcome(
+            VerificationStatus.MANUAL_REQUIRED,
+            f"SQLi semantic evidence artifact {result_name} could not be read.",
+            _dedupe([*evidence_refs, result_ref]),
+        )
+    evidence = _dedupe([*evidence_refs, result_ref])
+    status = str(payload.get("status") or "")
+    if status == VerificationStatus.CONFIRMED and payload.get("marker_seen") and payload.get("attack_count", 0) > payload.get("baseline_count", 0):
+        return JudgeOutcome(
+            VerificationStatus.CONFIRMED,
+            "SQL injection semantic widening observed from sqli-result.json.",
+            evidence,
+        )
+    if status == VerificationStatus.REJECTED:
+        mode = str(payload.get("mode") or "")
+        reason = "SQL injection contradiction observed from sqli-result.json."
+        if mode == "parameterized":
+            reason = "SQL injection rejected: parameter binding kept the payload as data."
+        return JudgeOutcome(VerificationStatus.REJECTED, reason, evidence)
+    return JudgeOutcome(
+        VerificationStatus.MANUAL_REQUIRED,
+        f"SQLi semantic evidence artifact {result_name} did not contain confirming or rejecting semantics.",
+        evidence,
+    )
+
+
+def _find_artifact_by_name(result_data: dict[str, Any], name: str) -> str | None:
+    for ref in result_data.get("artifact_refs") or []:
+        path = Path(str(ref))
+        if path.name == name and path.is_file():
+            return str(path)
+    cwd = result_data.get("cwd")
+    if cwd:
+        candidate = Path(str(cwd)) / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def _repair_context_from_sandbox_failure(result: SandboxRunResult) -> dict[str, Any] | None:
     if result.status in {"policy-denied", "timed-out"}:
         return None
@@ -647,6 +785,83 @@ def _prepend_repair_lines(lines: list[str], repair_context: dict[str, Any] | Non
     return lines
 
 
+def _sqli_script(plan: dict[str, Any], repair_context: dict[str, Any] | None = None) -> str:
+    source_assignments = [f"    {name} = _value" for name in plan.get("source_variables", [])]
+    if not source_assignments:
+        source_assignments = ["    _unused_source = _value"]
+    if plan["mode"] == "raw":
+        execution_lines = [
+            "baseline_query = _build_raw_query(BASELINE_VALUE)",
+            "attack_query = _build_raw_query(ATTACK_PAYLOAD)",
+            "baseline_rows = _fetch_rows(cursor, baseline_query)",
+            "attack_rows = _fetch_rows(cursor, attack_query)",
+        ]
+    else:
+        execution_lines = [
+            f"baseline_query = {json.dumps(plan['query_sql'])}",
+            "attack_query = baseline_query",
+            "baseline_rows = _fetch_rows(cursor, baseline_query, (BASELINE_VALUE,))",
+            "attack_rows = _fetch_rows(cursor, attack_query, (ATTACK_PAYLOAD,))",
+        ]
+    lines = [
+        "import json",
+        "import sqlite3",
+        "from pathlib import Path",
+        "",
+        "BASELINE_VALUE = 'alice'",
+        "ATTACK_PAYLOAD = \"' OR '1'='1\"",
+        f"MODE = {json.dumps(plan['mode'])}",
+        f"QUERY_EXPRESSION = {json.dumps(plan['query_expression'])}",
+        f"SINK_EXPRESSION = {json.dumps(plan['sink_expression'])}",
+        f"TRACE_REF = {json.dumps(plan.get('trace_ref', ''))}",
+        "",
+        "def _seed(cursor):",
+        "    cursor.execute('create table users (id integer, name text, role text)')",
+        "    cursor.executemany(",
+        "        'insert into users (id, name, role) values (?, ?, ?)',",
+        "        [(1, 'alice', 'user'), (2, 'bob', 'marker'), (3, 'charlie', 'marker')],",
+        "    )",
+        "",
+        "def _fetch_rows(cursor, query, params=None):",
+        "    if not str(query).lstrip().lower().startswith('select'):",
+        "        raise RuntimeError('non-select SQL blocked by harness')",
+        "    if params is None:",
+        "        cursor.execute(query)",
+        "    else:",
+        "        cursor.execute(query, params)",
+        "    return cursor.fetchall()",
+        "",
+        "def _build_raw_query(_value):",
+        *source_assignments,
+        f"    return {plan['query_expression']}",
+        "",
+        "connection = sqlite3.connect(':memory:')",
+        "cursor = connection.cursor()",
+        "_seed(cursor)",
+        *execution_lines,
+        "marker_seen = any(str(value) == 'marker' for row in attack_rows for value in row)",
+        "baseline_count = len(baseline_rows)",
+        "attack_count = len(attack_rows)",
+        "status = 'confirmed' if marker_seen and attack_count > baseline_count else 'rejected'",
+        "result = {",
+        "    'status': status,",
+        "    'mode': MODE,",
+        "    'baseline_count': baseline_count,",
+        "    'attack_count': attack_count,",
+        "    'marker_seen': marker_seen,",
+        "    'query_expression': QUERY_EXPRESSION,",
+        "    'sink_expression': SINK_EXPRESSION,",
+        "    'trace_ref': TRACE_REF,",
+        "    'baseline_query': baseline_query,",
+        "    'attack_query': attack_query,",
+        "}",
+        "Path('sqli-result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')",
+        "print('SQLI_CONFIRMED' if status == 'confirmed' else 'SQLI_REJECTED')",
+    ]
+    lines = _prepend_repair_lines(lines, repair_context)
+    return "\n".join(lines)
+
+
 def _load_first_trace(finding: Finding) -> dict[str, Any] | None:
     for ref in finding.metadata.get("dataflow_trace_refs", []):
         path = Path(str(ref))
@@ -656,6 +871,179 @@ def _load_first_trace(finding: Finding) -> dict[str, Any] | None:
             except (OSError, json.JSONDecodeError):
                 return None
     return None
+
+
+def _build_sqli_harness_plan(
+    trace: dict[str, Any] | None,
+    finding: Finding,
+    metadata: RepositoryMetadata,
+) -> tuple[dict[str, Any] | None, str]:
+    if not trace:
+        return None, "SQLi PoC requires an openable dataflow trace artifact."
+    if trace.get("vulnerability_class") != "sql-injection":
+        return None, "SQLi PoC requires a sql-injection dataflow trace."
+    language = str(trace.get("language") or "")
+    if language != "python":
+        return None, f"Unsupported SQLi language for PoC execution: {language or 'unknown'}."
+    sink = trace.get("sink") or {}
+    sink_expression = str(sink.get("expression") or "")
+    if not sink_expression:
+        return None, "SQLi dataflow trace is missing a sink expression."
+    target_path = Path(metadata.root_path or ".") / str(sink.get("path") or finding.location.path)
+    if not target_path.is_file():
+        return None, "Target SQLi source file could not be opened."
+    target_text = target_path.read_text(encoding="utf-8", errors="ignore")
+    steps = trace.get("steps") or []
+    expressions = [sink_expression, *[str(step.get("expression") or "") for step in steps]]
+    if not any(expr and _normalize_code(expr) in _normalize_code(target_text) for expr in expressions):
+        return None, "Target SQLi expression mismatch; trace sink/query expression was not found in target source."
+
+    call = _parse_python_call(sink_expression)
+    if call is None or not call.args:
+        return None, "Unsupported SQLi sink shape: no executable SQL argument was found."
+    call_name = _call_name(call.func)
+    if _is_orm_sql_call(call_name):
+        return None, f"Unsupported ORM or query-builder SQLi sink: {call_name}."
+    parameterized = len(call.args) > 1 or bool(trace.get("sanitizers"))
+    source_vars = _source_variables_from_trace(trace)
+
+    if parameterized:
+        query_sql = _literal_string(call.args[0])
+        if not query_sql:
+            return None, "Unsupported parameterized SQLi shape: SQL text is dynamic."
+        if not _sql_starts_with_select(query_sql):
+            return None, "Unsupported SQLi query shape: non-SELECT statements are not executed."
+        return (
+            {
+                "mode": "parameterized",
+                "expected_status": VerificationStatus.REJECTED,
+                "sink_expression": sink_expression,
+                "query_expression": ast.unparse(call.args[0]),
+                "query_sql": query_sql,
+                "source_variables": source_vars,
+                "trace_ref": str(trace.get("artifact_path") or ""),
+            },
+            "",
+        )
+
+    query_expression = _query_expression_from_sink(call, steps)
+    if not query_expression:
+        return None, "Unsupported SQLi query shape: query expression could not be extracted from the trace."
+    query_sql_preview = _static_sql_preview(query_expression)
+    if not query_sql_preview:
+        return None, "Unsupported SQLi query shape: SQL text is too dynamic for the sqlite harness."
+    if not _sql_starts_with_select(query_sql_preview):
+        return None, "Unsupported SQLi query shape: non-SELECT statements are not executed."
+    if _expression_names(query_expression) and not source_vars:
+        return None, "Unsupported SQLi query shape: source variable could not be recovered from the trace."
+    return (
+        {
+            "mode": "raw",
+            "expected_status": VerificationStatus.CONFIRMED,
+            "sink_expression": sink_expression,
+            "query_expression": query_expression,
+            "query_sql": query_sql_preview,
+            "source_variables": source_vars,
+            "trace_ref": str(trace.get("artifact_path") or ""),
+        },
+        "",
+    )
+
+
+def _parse_python_call(expression: str) -> ast.Call | None:
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            return node
+    return None
+
+
+def _is_orm_sql_call(call_name: str) -> bool:
+    lowered = call_name.lower()
+    return lowered.startswith("session.") or "sequelize" in lowered or "querybuilder" in lowered
+
+
+def _query_expression_from_sink(call: ast.Call, steps: list[dict[str, Any]]) -> str | None:
+    first = call.args[0]
+    if isinstance(first, ast.Name):
+        target = first.id
+        for step in reversed(steps):
+            expression = str(step.get("expression") or "")
+            assignment = _assignment_parts(expression)
+            if assignment and assignment[0] == target:
+                return assignment[1]
+        return None
+    return ast.unparse(first)
+
+
+def _source_variables_from_trace(trace: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    for step in trace.get("steps") or []:
+        expression = str(step.get("expression") or "")
+        assignment = _assignment_parts(expression)
+        if not assignment:
+            continue
+        target, value = assignment
+        if target.isidentifier() and ("request.args" in value or "request.GET" in value or "query_params" in value):
+            names.append(target)
+    source = trace.get("source") or {}
+    symbol = str(source.get("symbol") or "")
+    if symbol.isidentifier():
+        names.append(symbol)
+    return _dedupe(names)
+
+
+def _assignment_parts(expression: str) -> tuple[str, str] | None:
+    try:
+        tree = ast.parse(expression)
+    except SyntaxError:
+        return None
+    if not tree.body or not isinstance(tree.body[0], (ast.Assign, ast.AnnAssign)):
+        return None
+    statement = tree.body[0]
+    if isinstance(statement, ast.Assign):
+        if not statement.targets or not isinstance(statement.targets[0], ast.Name):
+            return None
+        return statement.targets[0].id, ast.unparse(statement.value)
+    if isinstance(statement.target, ast.Name) and statement.value is not None:
+        return statement.target.id, ast.unparse(statement.value)
+    return None
+
+
+def _literal_string(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _static_sql_preview(expression: str) -> str | None:
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.JoinedStr):
+            parts = [part.value for part in node.values if isinstance(part, ast.Constant) and isinstance(part.value, str)]
+            if parts:
+                return "".join(parts)
+    return None
+
+
+def _sql_starts_with_select(sql: str) -> bool:
+    return sql.lstrip().lower().startswith("select")
+
+
+def _expression_names(expression: str) -> list[str]:
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return []
+    return sorted({node.id for node in ast.walk(tree) if isinstance(node, ast.Name)})
 
 
 def _build_path_traversal_harness_plan(
