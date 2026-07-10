@@ -31,7 +31,28 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument(
         "--sandbox",
         action="store_true",
-        help="Enable local sandbox execution for PoC-backed validation. Required for sandbox validation execution.",
+        help="Enable sandbox execution for PoC-backed validation. Required for sandbox validation execution.",
+    )
+    scan.add_argument(
+        "--sandbox-runner",
+        choices=["local", "docker"],
+        default=None,
+        help="Sandbox runner to use for PoC execution.",
+    )
+    scan.add_argument(
+        "--sandbox-docker-image",
+        default=None,
+        help="Docker image for Docker sandbox execution, such as python:3.12-slim.",
+    )
+    scan.add_argument(
+        "--sandbox-docker-context",
+        default=None,
+        help="Docker CLI context for Docker sandbox execution, such as desktop-linux.",
+    )
+    scan.add_argument(
+        "--sandbox-docker-host",
+        default=None,
+        help="Docker host endpoint for Docker sandbox execution, such as npipe:////./pipe/dockerDesktopLinuxEngine.",
     )
     scan.add_argument("--runtime", action="store_true", help="Enable LLM runtime, prompt, memory, MCP, and message logs.")
     scan.add_argument("--llm-provider", default=None, help="LLM provider, such as mock or openai-compatible.")
@@ -186,6 +207,14 @@ def _apply_runtime_args(config: AuditConfig, args) -> None:
         config.audit_scope.exclude_patterns.extend(args.exclude)
     if getattr(args, "sandbox", False):
         config.sandbox.enabled = True
+    if getattr(args, "sandbox_runner", None):
+        config.sandbox.runner = args.sandbox_runner
+    if getattr(args, "sandbox_docker_image", None):
+        config.sandbox.docker_image = args.sandbox_docker_image
+    if getattr(args, "sandbox_docker_context", None):
+        config.sandbox.docker_context = args.sandbox_docker_context
+    if getattr(args, "sandbox_docker_host", None):
+        config.sandbox.docker_host = args.sandbox_docker_host
 
 
 def _add_integration_flags(parser: argparse.ArgumentParser) -> None:

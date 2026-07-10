@@ -3,7 +3,7 @@ import { Play, ShieldCheck } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
-import type { ApiOptions, McpMode, MemoryMode, ValidationLevel } from "../api/types";
+import type { ApiOptions, McpMode, MemoryMode, SandboxRunner, ValidationLevel } from "../api/types";
 
 const DEFAULT_OPTIONS: ApiOptions = {
   provider_modes: ["mock", "openai-compatible"],
@@ -11,6 +11,10 @@ const DEFAULT_OPTIONS: ApiOptions = {
   mcp_modes: ["on", "degraded", "off"],
   validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
   llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"],
+  sandbox_runners: ["local", "docker"],
+  default_docker_image: "python:3.12-slim",
+  default_docker_context: "",
+  default_docker_host: "",
   default_exclude_patterns: ["tests/**", "test/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"]
 };
 
@@ -33,6 +37,10 @@ export function CreateScanPage() {
   const [mcpMode, setMcpMode] = useState<McpMode>("off");
   const [validationLevel, setValidationLevel] = useState<ValidationLevel>("static-only");
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
+  const [sandboxRunner, setSandboxRunner] = useState<SandboxRunner>("local");
+  const [dockerImage, setDockerImage] = useState(DEFAULT_OPTIONS.default_docker_image);
+  const [dockerContext, setDockerContext] = useState(DEFAULT_OPTIONS.default_docker_context);
+  const [dockerHost, setDockerHost] = useState(DEFAULT_OPTIONS.default_docker_host);
   const [includePatterns, setIncludePatterns] = useState("");
   const [excludePatterns, setExcludePatterns] = useState(DEFAULT_OPTIONS.default_exclude_patterns.join("\n"));
   const [targetError, setTargetError] = useState("");
@@ -42,6 +50,9 @@ export function CreateScanPage() {
     queryFn: apiClient.getOptions
   });
   const options = optionsQuery.data ?? DEFAULT_OPTIONS;
+  const selectedDockerImage = dockerImage.trim() || options.default_docker_image;
+  const selectedDockerContext = dockerContext.trim();
+  const selectedDockerHost = dockerHost.trim();
   const providerMode = provider === "mock" ? "mock" : "openai-compatible";
   const selectedRoles = useMemo(() => roles.filter(Boolean), [roles]);
 
@@ -73,6 +84,14 @@ export function CreateScanPage() {
       mcp_mode: mcpMode,
       validation_level: validationLevel,
       sandbox_enabled: sandboxEnabled,
+      sandbox_runner: sandboxRunner,
+      ...(sandboxRunner === "docker"
+        ? {
+            sandbox_docker_image: selectedDockerImage,
+            ...(selectedDockerContext ? { sandbox_docker_context: selectedDockerContext } : {}),
+            ...(selectedDockerHost ? { sandbox_docker_host: selectedDockerHost } : {})
+          }
+        : {}),
       include_patterns: parsePatterns(includePatterns),
       exclude_patterns: parsePatterns(excludePatterns),
       ...(requestedModel ? { model: requestedModel } : {})
@@ -188,6 +207,36 @@ export function CreateScanPage() {
               ))}
             </select>
           </label>
+          {sandboxEnabled && (
+            <label className="field">
+              <span>Sandbox runner</span>
+              <select value={sandboxRunner} onChange={(event) => setSandboxRunner(event.target.value as SandboxRunner)}>
+                {options.sandbox_runners.map((runner) => (
+                  <option key={runner} value={runner}>
+                    {runner}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {sandboxEnabled && sandboxRunner === "docker" && (
+            <label className="field">
+              <span>Docker image</span>
+              <input value={dockerImage} onChange={(event) => setDockerImage(event.target.value)} />
+            </label>
+          )}
+          {sandboxEnabled && sandboxRunner === "docker" && (
+            <label className="field">
+              <span>Docker context</span>
+              <input value={dockerContext} onChange={(event) => setDockerContext(event.target.value)} />
+            </label>
+          )}
+          {sandboxEnabled && sandboxRunner === "docker" && (
+            <label className="field">
+              <span>Docker host</span>
+              <input value={dockerHost} onChange={(event) => setDockerHost(event.target.value)} />
+            </label>
+          )}
         </div>
 
         {llmDecisions && (

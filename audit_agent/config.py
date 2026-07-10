@@ -166,11 +166,20 @@ class AuditScope:
 @dataclass
 class SandboxConfig:
     enabled: bool = False
+    runner: str = "local"
     allow_live_targets: bool = False
     safe_commands: list[str] = field(default_factory=list)
     command_allowlist: list[str] = field(default_factory=list)
     timeout_seconds: int = 10
     workspace_prefix: str = "audit-agent-sandbox"
+    docker_binary: str = "docker"
+    docker_image: str = "python:3.12-slim"
+    docker_context: str | None = None
+    docker_host: str | None = None
+    network: str = "none"
+    memory_limit: str = "256m"
+    cpu_limit: str = "1"
+    pids_limit: int = 128
 
 
 @dataclass

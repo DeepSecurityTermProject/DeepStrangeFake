@@ -35,6 +35,10 @@ describe("CreateScanPage", () => {
       mcp_modes: ["on", "degraded", "off"],
       validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
       llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"],
+      sandbox_runners: ["local", "docker"],
+      default_docker_image: "python:3.12-slim",
+      default_docker_context: "",
+      default_docker_host: "",
       default_exclude_patterns: ["tests/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"]
     });
     vi.mocked(apiClient.createRun).mockResolvedValue({
@@ -83,6 +87,7 @@ describe("CreateScanPage", () => {
       mcp_mode: "off",
       validation_level: "static-only",
       sandbox_enabled: true,
+      sandbox_runner: "local",
       include_patterns: ["src/**", "app.py"],
       exclude_patterns: ["tests/**", "fixtures/**"]
     });
@@ -99,5 +104,28 @@ describe("CreateScanPage", () => {
     const payload = vi.mocked(apiClient.createRun).mock.calls[0][0];
     expect(payload.llm_provider).toBe("openai-compatible");
     expect(payload).not.toHaveProperty("model");
+  });
+
+  it("submits docker sandbox runner and image when selected", async () => {
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/validation/i), "sandbox");
+    await userEvent.selectOptions(await screen.findByLabelText(/sandbox runner/i), "docker");
+    await userEvent.clear(screen.getByLabelText(/docker image/i));
+    await userEvent.type(screen.getByLabelText(/docker image/i), "python:3.12-slim");
+    await userEvent.type(screen.getByLabelText(/docker context/i), "desktop-linux");
+    await userEvent.type(screen.getByLabelText(/docker host/i), "npipe:////./pipe/dockerDesktopLinuxEngine");
+    await userEvent.click(screen.getByRole("button", { name: /create scan/i }));
+
+    await waitFor(() => expect(apiClient.createRun).toHaveBeenCalled());
+    const payload = vi.mocked(apiClient.createRun).mock.calls.at(-1)?.[0];
+    expect(payload).toMatchObject({
+      validation_level: "sandbox",
+      sandbox_enabled: true,
+      sandbox_runner: "docker",
+      sandbox_docker_image: "python:3.12-slim",
+      sandbox_docker_context: "desktop-linux",
+      sandbox_docker_host: "npipe:////./pipe/dockerDesktopLinuxEngine"
+    });
   });
 });

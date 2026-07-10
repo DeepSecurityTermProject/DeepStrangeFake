@@ -41,6 +41,10 @@ def create_app(
             "mcp_modes": ["on", "degraded", "off"],
             "validation_levels": ["static-only", "poc-generate", "sandbox", "manual"],
             "llm_decision_roles": ["orchestrator", "recon", "analysis", "verification"],
+            "sandbox_runners": ["local", "docker"],
+            "default_docker_image": AuditConfig.default().sandbox.docker_image,
+            "default_docker_context": AuditConfig.default().sandbox.docker_context or "",
+            "default_docker_host": AuditConfig.default().sandbox.docker_host or "",
             "default_exclude_patterns": AuditConfig.default().audit_scope.exclude_patterns,
         }
 

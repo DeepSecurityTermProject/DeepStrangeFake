@@ -104,6 +104,7 @@ describe("RunDetailTabs", () => {
               validation: {
                 level: "sandbox",
                 exit_code: 0,
+                environment: { runner: "docker", docker_image: "python:3.12-slim" },
                 judge_reason: "Traversal signal observed from stdout.",
                 poc_refs: ["runs/run-1/verification/F-path/poc.json"],
                 sandbox_result_refs: ["runs/run-1/verification/F-path/result.json"],
@@ -131,6 +132,8 @@ describe("RunDetailTabs", () => {
     await userEvent.click(screen.getByRole("tab", { name: /findings/i }));
     expect(screen.getByText(/potential path traversal/i)).toBeInTheDocument();
     expect(screen.getAllByText(/confirmed/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^docker$/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/python:3.12-slim/i)).toBeInTheDocument();
     expect(screen.getByText(/PATH_TRAVERSAL_CONFIRMED/i)).toBeInTheDocument();
     expect(screen.getByText(/unsupported vulnerability class/i)).toBeInTheDocument();
   });

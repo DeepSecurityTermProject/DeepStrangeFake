@@ -78,6 +78,17 @@ def replay_summary(log_path: Path | str) -> dict:
         "tool_calls": 0,
         "artifacts": 0,
     }
+    sandbox_lifecycle = {
+        "attempts": 0,
+        "status_counts": {},
+        "runner_counts": {},
+        "docker_images": {},
+        "policy_denied": 0,
+        "environment_failures": 0,
+        "manual_required": 0,
+        "confirmed": 0,
+        "rejected": 0,
+    }
     for message in messages:
         counts[message.message_type] = counts.get(message.message_type, 0) + 1
         if message.message_type.startswith("decision.") or message.message_type == "llm.decision":
@@ -105,11 +116,14 @@ def replay_summary(log_path: Path | str) -> dict:
                 role_summary["fallback_reasons"].append(reason)
         if message.message_type.startswith("runtime."):
             _add_runtime_lifecycle(runtime_lifecycle, message)
+        if message.message_type == "verification.attempt":
+            _add_sandbox_lifecycle(sandbox_lifecycle, message)
     return {
         "message_count": len(messages),
         "types": counts,
         "decision_lifecycle": lifecycle,
         "runtime_lifecycle": runtime_lifecycle,
+        "sandbox_lifecycle": sandbox_lifecycle,
     }
 
 
@@ -152,3 +166,25 @@ def _add_runtime_lifecycle(runtime_lifecycle: dict, message: MessageEnvelope) ->
     if message.message_type == "runtime.artifact":
         role_summary["artifacts"] += 1
         runtime_lifecycle["artifacts"] += 1
+
+
+def _add_sandbox_lifecycle(sandbox_lifecycle: dict, message: MessageEnvelope) -> None:
+    sandbox_lifecycle["attempts"] += 1
+    status = str(message.payload.get("status") or "unknown")
+    runner = str(message.payload.get("runner") or "unknown")
+    image = str(message.payload.get("docker_image") or "")
+    sandbox_lifecycle["status_counts"][status] = sandbox_lifecycle["status_counts"].get(status, 0) + 1
+    sandbox_lifecycle["runner_counts"][runner] = sandbox_lifecycle["runner_counts"].get(runner, 0) + 1
+    if image:
+        sandbox_lifecycle["docker_images"][image] = sandbox_lifecycle["docker_images"].get(image, 0) + 1
+    if status == "policy-denied":
+        sandbox_lifecycle["policy_denied"] += 1
+    blocking = str(message.payload.get("blocking_reason") or "").lower()
+    if "docker" in blocking or "image" in blocking or "daemon" in blocking:
+        sandbox_lifecycle["environment_failures"] += 1
+    if status == "manual-required":
+        sandbox_lifecycle["manual_required"] += 1
+    if status == "confirmed":
+        sandbox_lifecycle["confirmed"] += 1
+    if status == "rejected":
+        sandbox_lifecycle["rejected"] += 1

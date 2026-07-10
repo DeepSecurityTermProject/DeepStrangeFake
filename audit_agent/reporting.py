@@ -151,6 +151,13 @@ class ReportGenerator:
             )
             if validation.get("exit_code") is not None:
                 lines.append(f"- Exit code: {validation.get('exit_code')}")
+            environment = validation.get("environment") or {}
+            if environment.get("runner"):
+                lines.append(f"- Runner: {environment.get('runner')}")
+            if environment.get("docker_image"):
+                lines.append(f"- Docker image: {environment.get('docker_image')}")
+            if validation.get("timed_out") is not None:
+                lines.append(f"- Timed out: {validation.get('timed_out')}")
             if validation.get("judge_reason"):
                 lines.append(f"- Judge reason: {validation.get('judge_reason')}")
             if validation.get("stdout_preview") is not None:

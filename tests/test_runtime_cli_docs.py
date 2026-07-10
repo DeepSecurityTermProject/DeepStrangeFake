@@ -31,6 +31,14 @@ class RuntimeCliDocsTests(unittest.TestCase):
                 "--mcp-mode",
                 "degraded",
                 "--sandbox",
+                "--sandbox-runner",
+                "docker",
+                "--sandbox-docker-image",
+                "python:3.12-slim",
+                "--sandbox-docker-context",
+                "desktop-linux",
+                "--sandbox-docker-host",
+                "npipe:////./pipe/dockerDesktopLinuxEngine",
                 "--include",
                 "src/**",
                 "--exclude",
@@ -45,6 +53,10 @@ class RuntimeCliDocsTests(unittest.TestCase):
         self.assertEqual(args.memory_mode, "lexical")
         self.assertEqual(args.mcp_mode, "degraded")
         self.assertTrue(args.sandbox)
+        self.assertEqual(args.sandbox_runner, "docker")
+        self.assertEqual(args.sandbox_docker_image, "python:3.12-slim")
+        self.assertEqual(args.sandbox_docker_context, "desktop-linux")
+        self.assertEqual(args.sandbox_docker_host, "npipe:////./pipe/dockerDesktopLinuxEngine")
         self.assertEqual(args.include, ["src/**"])
         self.assertEqual(args.exclude, ["legacy/**"])
 
@@ -52,6 +64,10 @@ class RuntimeCliDocsTests(unittest.TestCase):
         _apply_runtime_args(config, args)
 
         self.assertTrue(config.sandbox.enabled)
+        self.assertEqual(config.sandbox.runner, "docker")
+        self.assertEqual(config.sandbox.docker_image, "python:3.12-slim")
+        self.assertEqual(config.sandbox.docker_context, "desktop-linux")
+        self.assertEqual(config.sandbox.docker_host, "npipe:////./pipe/dockerDesktopLinuxEngine")
         self.assertIn("src/**", config.audit_scope.include_patterns)
         self.assertIn("legacy/**", config.audit_scope.exclude_patterns)
 

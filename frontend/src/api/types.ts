@@ -2,6 +2,7 @@ export type JobStatus = "queued" | "running" | "succeeded" | "failed";
 export type MemoryMode = "lexical" | "embedding" | "off";
 export type McpMode = "on" | "degraded" | "off";
 export type ValidationLevel = "static-only" | "poc-generate" | "sandbox" | "manual";
+export type SandboxRunner = "local" | "docker";
 
 export interface ScanRunRequest {
   target: string;
@@ -14,6 +15,10 @@ export interface ScanRunRequest {
   mcp_mode?: McpMode;
   validation_level?: ValidationLevel;
   sandbox_enabled?: boolean;
+  sandbox_runner?: SandboxRunner;
+  sandbox_docker_image?: string;
+  sandbox_docker_context?: string;
+  sandbox_docker_host?: string;
   include_patterns?: string[];
   exclude_patterns?: string[];
   output?: string;
@@ -48,6 +53,10 @@ export interface ApiOptions {
   mcp_modes: McpMode[];
   validation_levels: ValidationLevel[];
   llm_decision_roles: string[];
+  sandbox_runners: SandboxRunner[];
+  default_docker_image: string;
+  default_docker_context: string;
+  default_docker_host: string;
   default_exclude_patterns: string[];
 }
 

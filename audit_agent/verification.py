@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
 import ast
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .config import AuditConfig
 from .models import (
@@ -46,6 +47,13 @@ class JudgeOutcome:
     status: str
     reason: str
     evidence_refs: list[str]
+
+
+class SandboxRunner(Protocol):
+    runner_type: str
+
+    def run(self, poc: PoCArtifact | dict[str, Any], attempt_index: int = 1) -> SandboxRunResult:
+        ...
 
 
 class PathTraversalPoCGenerator:
@@ -178,6 +186,8 @@ class SQLInjectionPoCGenerator:
 
 
 class LocalSandboxRunner:
+    runner_type = "local"
+
     def __init__(self, config: AuditConfig, run_dir: str | Path):
         self.config = config
         self.run_dir = Path(run_dir)
@@ -310,6 +320,7 @@ class LocalSandboxRunner:
 
     def _environment_summary(self) -> dict[str, Any]:
         return {
+            "runner": self.runner_type,
             "network": "best-effort-deny",
             "shell": False,
             "python": sys.executable,
@@ -341,6 +352,388 @@ class LocalSandboxRunner:
         return result
 
 
+class DockerSandboxRunner:
+    runner_type = "docker"
+
+    def __init__(self, config: AuditConfig, run_dir: str | Path):
+        self.config = config
+        self.run_dir = Path(run_dir)
+
+    def run(self, poc: PoCArtifact | dict[str, Any], attempt_index: int = 1) -> SandboxRunResult:
+        poc_data = _record_dict(poc)
+        finding_id = str(poc_data.get("finding_id") or "unknown")
+        poc_id = str(poc_data.get("id") or "poc")
+        attempt_id = stable_id("ATT", finding_id, attempt_index, poc_id)
+        container_name = _docker_container_name(attempt_id)
+        attempt_dir = _attempt_dir(self.run_dir, finding_id, attempt_index)
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        timeout = int(getattr(self.config.sandbox, "timeout_seconds", 10) or 10)
+        stdout_path = attempt_dir / "stdout.txt"
+        stderr_path = attempt_dir / "stderr.txt"
+        started = time.monotonic()
+        started_at = utc_now()
+        docker_binary = str(getattr(self.config.sandbox, "docker_binary", "docker") or "docker")
+        image = str(getattr(self.config.sandbox, "docker_image", "python:3.12-slim") or "python:3.12-slim")
+        docker_context = _clean_optional_str(getattr(self.config.sandbox, "docker_context", None))
+        docker_host = _clean_optional_str(getattr(self.config.sandbox, "docker_host", None))
+
+        def result_for(
+            status: str,
+            message: str,
+            *,
+            exit_code: int | None = None,
+            stdout: str = "",
+            stderr: str = "",
+            argv: list[str] | None = None,
+            timed_out: bool = False,
+            policy_allowed: bool = False,
+        ) -> SandboxRunResult:
+            stdout_path.write_text(stdout, encoding="utf-8", errors="ignore")
+            stderr_path.write_text(stderr, encoding="utf-8", errors="ignore")
+            result = SandboxRunResult(
+                poc_id=poc_id,
+                finding_id=finding_id,
+                attempt_id=attempt_id,
+                status=status,
+                cwd=str(attempt_dir),
+                argv=argv or [],
+                timeout_seconds=timeout,
+                environment=self._environment_summary(
+                    image=image,
+                    docker_binary=docker_binary,
+                    docker_context=docker_context,
+                    docker_host="" if docker_context else docker_host,
+                    container_name=container_name,
+                    container_status=status,
+                ),
+                exit_code=exit_code,
+                timed_out=timed_out,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                stdout_ref=str(stdout_path),
+                stderr_ref=str(stderr_path),
+                stdout_preview=_preview(stdout),
+                stderr_preview=_preview(stderr),
+                artifact_refs=_collect_attempt_artifacts(attempt_dir, {stdout_path, stderr_path}),
+                policy={**self._policy_summary(attempt_dir), "allowed": policy_allowed},
+                message=message,
+                started_at=started_at,
+                finished_at=utc_now(),
+            )
+            return _persist_sandbox_result(result, attempt_dir)
+
+        if not _docker_binary_available(docker_binary):
+            return result_for(
+                "environment-unavailable",
+                f"Docker binary is unavailable: {docker_binary}.",
+            )
+
+        network = str(getattr(self.config.sandbox, "network", "none") or "none")
+        if network != "none":
+            return result_for(
+                "policy-denied",
+                f"Docker network mode {network!r} is not allowed; expected 'none'.",
+            )
+
+        info_argv = self._docker_base_argv(docker_binary)
+        info = self._run_docker([*info_argv, "info"], timeout=timeout)
+        if info.returncode != 0:
+            return result_for(
+                "environment-unavailable",
+                "Docker daemon is unavailable or permission denied.",
+                exit_code=info.returncode,
+                stdout=info.stdout or "",
+                stderr=info.stderr or "",
+                argv=[*info_argv, "info"],
+            )
+
+        image_check = self._run_docker([*info_argv, "image", "inspect", image], timeout=timeout)
+        if image_check.returncode != 0:
+            return result_for(
+                "image-unavailable",
+                f"Docker image {image} is not available locally. Run: docker pull {image}",
+                exit_code=image_check.returncode,
+                stdout=image_check.stdout or "",
+                stderr=image_check.stderr or "",
+                argv=[*info_argv, "image", "inspect", image],
+            )
+
+        normalized, reason = self._normalize_poc_argv([str(item) for item in poc_data.get("command_argv") or []], attempt_dir)
+        if normalized is None:
+            return result_for(
+                "policy-denied",
+                reason,
+            )
+
+        docker_argv = self._build_run_argv(
+            docker_binary=docker_binary,
+            image=image,
+            attempt_dir=attempt_dir,
+            container_name=container_name,
+            container_argv=normalized,
+        )
+        try:
+            completed = subprocess.run(
+                docker_argv,
+                cwd=str(attempt_dir),
+                timeout=timeout,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                shell=False,
+                env=self._docker_env(),
+            )
+            status = "completed" if completed.returncode == 0 else "docker-failed"
+            message = (
+                "PoC executed in Docker sandbox."
+                if completed.returncode == 0
+                else "Docker execution failed before Judge-readable confirmation was available."
+            )
+            return result_for(
+                status,
+                message,
+                exit_code=completed.returncode,
+                stdout=completed.stdout or "",
+                stderr=completed.stderr or "",
+                argv=docker_argv,
+                policy_allowed=True,
+            )
+        except subprocess.TimeoutExpired as exc:
+            self._force_remove_container(docker_binary, container_name)
+            stdout = _decode_timeout_output(exc.stdout)
+            stderr = _decode_timeout_output(exc.stderr)
+            return result_for(
+                "timed-out",
+                "Docker PoC execution timed out.",
+                stdout=stdout,
+                stderr=stderr,
+                argv=docker_argv,
+                timed_out=True,
+                policy_allowed=True,
+            )
+
+    def _run_docker(self, argv: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                argv,
+                timeout=timeout,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                shell=False,
+                env=self._docker_env(),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return subprocess.CompletedProcess(argv, 1, "", str(exc))
+
+    def _build_run_argv(
+        self,
+        *,
+        docker_binary: str,
+        image: str,
+        attempt_dir: Path,
+        container_name: str,
+        container_argv: list[str],
+    ) -> list[str]:
+        sandbox = self.config.sandbox
+        argv = [
+            *self._docker_base_argv(docker_binary),
+            "run",
+            "--name",
+            container_name,
+            "--rm",
+            "--network",
+            str(getattr(sandbox, "network", "none") or "none"),
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+        ]
+        pids_limit = getattr(sandbox, "pids_limit", None)
+        if pids_limit:
+            argv.extend(["--pids-limit", str(pids_limit)])
+        memory_limit = str(getattr(sandbox, "memory_limit", "") or "")
+        if memory_limit:
+            argv.extend(["--memory", memory_limit])
+        cpu_limit = str(getattr(sandbox, "cpu_limit", "") or "")
+        if cpu_limit:
+            argv.extend(["--cpus", cpu_limit])
+        argv.extend(
+            [
+                "--workdir",
+                "/attempt",
+                "--mount",
+                f"type=bind,source={attempt_dir.resolve()},target=/attempt",
+                "--tmpfs",
+                "/tmp:rw,nosuid,nodev,size=64m",
+                image,
+                *container_argv,
+            ]
+        )
+        return argv
+
+    def _normalize_poc_argv(self, argv: list[str], attempt_dir: Path) -> tuple[list[str] | None, str]:
+        if not argv:
+            return None, "empty argv"
+        normalized: list[str] = []
+        root = attempt_dir.resolve()
+        python_names = {"python", "python.exe", "python3", "python3.exe", "py", "py.exe"}
+        for index, item in enumerate(argv):
+            if index == 0:
+                executable_name = Path(item).name.lower()
+                if executable_name in python_names:
+                    normalized.append("python")
+                    continue
+                return None, f"Docker sandbox only allows Python PoC execution, got {item}."
+            mapped = _container_attempt_path(item, root)
+            if mapped:
+                normalized.append(mapped)
+                continue
+            if _looks_like_host_absolute_path(item):
+                return None, f"PoC argument escapes the attempt directory: {item}"
+            normalized.append(item)
+        return normalized, ""
+
+    def _environment_summary(
+        self,
+        *,
+        image: str,
+        docker_binary: str,
+        docker_context: str | None,
+        docker_host: str | None,
+        container_name: str,
+        container_status: str,
+    ) -> dict[str, Any]:
+        summary = {
+            "runner": self.runner_type,
+            "docker_image": image,
+            "docker_binary": docker_binary,
+            "container_name": container_name,
+            "container_status": container_status,
+            "network": getattr(self.config.sandbox, "network", "none"),
+            "shell": False,
+        }
+        if docker_context:
+            summary["docker_context"] = docker_context
+        if docker_host:
+            summary["docker_host"] = docker_host
+        return summary
+
+    def _policy_summary(self, attempt_dir: Path) -> dict[str, Any]:
+        sandbox = self.config.sandbox
+        docker_context = _clean_optional_str(getattr(sandbox, "docker_context", None))
+        docker_host = "" if docker_context else _clean_optional_str(getattr(sandbox, "docker_host", None))
+        policy = {
+            "runner": self.runner_type,
+            "network": getattr(sandbox, "network", "none"),
+            "privileged": False,
+            "read_only_root": True,
+            "cap_drop": ["ALL"],
+            "no_new_privileges": True,
+            "memory_limit": getattr(sandbox, "memory_limit", ""),
+            "cpu_limit": getattr(sandbox, "cpu_limit", ""),
+            "pids_limit": getattr(sandbox, "pids_limit", None),
+            "mounts": [
+                {
+                    "source": str(attempt_dir.resolve()),
+                    "target": "/attempt",
+                    "read_only": False,
+                    "purpose": "attempt-artifacts",
+                }
+            ],
+            "target_repository_writable_mount": False,
+            "docker_socket_mounted": False,
+        }
+        if docker_context:
+            policy["docker_context"] = docker_context
+        if docker_host:
+            policy["docker_host"] = docker_host
+        return policy
+
+    def _force_remove_container(self, docker_binary: str, container_name: str) -> None:
+        try:
+            subprocess.run(
+                [*self._docker_base_argv(docker_binary), "rm", "-f", container_name],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                shell=False,
+                env=self._docker_env(),
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return
+
+    def _docker_base_argv(self, docker_binary: str) -> list[str]:
+        argv = [docker_binary]
+        context = _clean_optional_str(getattr(self.config.sandbox, "docker_context", None))
+        if context:
+            argv.extend(["--context", context])
+        return argv
+
+    def _docker_env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        context = _clean_optional_str(getattr(self.config.sandbox, "docker_context", None))
+        host = _clean_optional_str(getattr(self.config.sandbox, "docker_host", None))
+        if context:
+            env.pop("DOCKER_HOST", None)
+            env.pop("DOCKER_CONTEXT", None)
+            return env
+        if host:
+            env["DOCKER_HOST"] = host
+            env.pop("DOCKER_CONTEXT", None)
+        return env
+
+
+class UnavailableSandboxRunner:
+    def __init__(self, config: AuditConfig, run_dir: str | Path, reason: str):
+        self.config = config
+        self.run_dir = Path(run_dir)
+        self.reason = reason
+        self.runner_type = str(getattr(config.sandbox, "runner", "unknown") or "unknown")
+
+    def run(self, poc: PoCArtifact | dict[str, Any], attempt_index: int = 1) -> SandboxRunResult:
+        poc_data = _record_dict(poc)
+        finding_id = str(poc_data.get("finding_id") or "unknown")
+        poc_id = str(poc_data.get("id") or "poc")
+        attempt_id = stable_id("ATT", finding_id, attempt_index, poc_id)
+        attempt_dir = _attempt_dir(self.run_dir, finding_id, attempt_index)
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        stdout_path = attempt_dir / "stdout.txt"
+        stderr_path = attempt_dir / "stderr.txt"
+        stdout_path.write_text("", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        result = SandboxRunResult(
+            poc_id=poc_id,
+            finding_id=finding_id,
+            attempt_id=attempt_id,
+            status="policy-denied",
+            cwd=str(attempt_dir),
+            argv=[],
+            timeout_seconds=int(getattr(self.config.sandbox, "timeout_seconds", 10) or 10),
+            environment={"runner": self.runner_type},
+            stdout_ref=str(stdout_path),
+            stderr_ref=str(stderr_path),
+            policy={"allowed": False, "reason": self.reason},
+            message=self.reason,
+            started_at=utc_now(),
+            finished_at=utc_now(),
+        )
+        return _persist_sandbox_result(result, attempt_dir)
+
+
+def create_sandbox_runner(config: AuditConfig, run_dir: str | Path) -> SandboxRunner:
+    runner = str(getattr(config.sandbox, "runner", "local") or "local").lower()
+    if runner == "local":
+        return LocalSandboxRunner(config, run_dir)
+    if runner == "docker":
+        return DockerSandboxRunner(config, run_dir)
+    return UnavailableSandboxRunner(config, run_dir, f"Unknown sandbox runner configured: {runner}")
+
+
 class VerificationJudge:
     def judge(self, poc: PoCArtifact | dict[str, Any], sandbox_result: SandboxRunResult | dict[str, Any]) -> JudgeOutcome:
         poc_data = _record_dict(poc)
@@ -355,6 +748,12 @@ class VerificationJudge:
             if ref
         ]
         evidence_refs.extend(result_data.get("artifact_refs") or [])
+        if result_data.get("status") in {"environment-unavailable", "image-unavailable", "docker-failed"}:
+            return JudgeOutcome(
+                VerificationStatus.MANUAL_REQUIRED,
+                result_data.get("message") or "Sandbox runner could not produce Judge-readable evidence.",
+                evidence_refs,
+            )
         if result_data.get("status") == "policy-denied":
             return JudgeOutcome(
                 VerificationStatus.MANUAL_REQUIRED,
@@ -408,7 +807,7 @@ class VerificationEngine:
             "path-traversal": self.generator,
             "sql-injection": SQLInjectionPoCGenerator(),
         }
-        self.runner = LocalSandboxRunner(config, self.run_dir)
+        self.runner = create_sandbox_runner(config, self.run_dir)
         self.judge = VerificationJudge()
 
     def verify(
@@ -718,7 +1117,7 @@ def _find_artifact_by_name(result_data: dict[str, Any], name: str) -> str | None
 
 
 def _repair_context_from_sandbox_failure(result: SandboxRunResult) -> dict[str, Any] | None:
-    if result.status in {"policy-denied", "timed-out"}:
+    if result.status in {"policy-denied", "timed-out", "environment-unavailable", "image-unavailable", "docker-failed"}:
         return None
     diagnostic_text = "\n".join([result.stderr_preview, result.stdout_preview])
     diagnostic = diagnostic_text.lower()
@@ -742,6 +1141,71 @@ def _repair_context_from_sandbox_failure(result: SandboxRunResult) -> dict[str, 
 def _attempt_dir(run_dir: str | Path, finding_id: str, attempt_index: int) -> Path:
     safe_id = "".join(char if char.isalnum() or char in "-_." else "-" for char in finding_id)
     return Path(run_dir) / "verification" / safe_id / f"attempt-{attempt_index}"
+
+
+def _docker_binary_available(docker_binary: str) -> bool:
+    binary_path = Path(docker_binary)
+    if binary_path.exists():
+        return True
+    return shutil.which(docker_binary) is not None
+
+
+def _clean_optional_str(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _docker_container_name(seed: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "-" for char in seed)
+    cleaned = "-".join(part for part in cleaned.split("-") if part)
+    return f"audit-agent-{cleaned[:48] or 'attempt'}"
+
+
+def _container_attempt_path(value: str, attempt_root: Path) -> str | None:
+    try:
+        candidate = Path(value)
+        if not candidate.is_absolute():
+            return None
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(attempt_root):
+            return None
+        relative = resolved.relative_to(attempt_root)
+        return "/attempt" if not relative.parts else "/attempt/" + relative.as_posix()
+    except (OSError, ValueError):
+        return None
+
+
+def _looks_like_host_absolute_path(value: str) -> bool:
+    try:
+        return Path(value).is_absolute()
+    except (OSError, ValueError):
+        return False
+
+
+def _collect_attempt_artifacts(attempt_dir: Path, excluded: set[Path]) -> list[str]:
+    refs: list[str] = []
+    root = attempt_dir.resolve()
+    excluded_resolved = {path.resolve() for path in excluded if path.exists()}
+    for path in sorted(attempt_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if resolved in excluded_resolved:
+            continue
+        if not resolved.is_relative_to(root):
+            continue
+        refs.append(str(path))
+    return refs
+
+
+def _persist_sandbox_result(result: SandboxRunResult, attempt_dir: Path) -> SandboxRunResult:
+    metadata_path = immutable_path(attempt_dir / "sandbox-result.json")
+    result.metadata_path = str(metadata_path)
+    metadata_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    if str(metadata_path) not in result.artifact_refs:
+        result.artifact_refs.append(str(metadata_path))
+        metadata_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    return result
 
 
 def _path_traversal_script(plan: dict[str, str], repair_context: dict[str, Any] | None = None) -> str:

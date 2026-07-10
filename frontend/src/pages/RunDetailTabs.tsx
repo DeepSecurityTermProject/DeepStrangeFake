@@ -104,6 +104,10 @@ function FindingsTab({ reportJson }: { reportJson?: AuditReport }) {
             <dd>{finding.confidence === undefined ? "n/a" : `${Math.round(finding.confidence * 100)}%`}</dd>
             <dt>Exit code</dt>
             <dd>{stringValue(validationValue(finding, "exit_code"))}</dd>
+            <dt>Runner</dt>
+            <dd>{stringValue(validationEnvironmentValue(finding, "runner"))}</dd>
+            <dt>Docker image</dt>
+            <dd>{stringValue(validationEnvironmentValue(finding, "docker_image"))}</dd>
             <dt>Judge</dt>
             <dd>{stringValue(validationValue(finding, "judge_reason"))}</dd>
             <dt>stdout</dt>
@@ -216,6 +220,14 @@ function valueFrom(primary: Record<string, unknown>, secondary: Record<string, u
 
 function validationValue(finding: { validation?: Record<string, unknown> }, key: string): unknown {
   return finding.validation?.[key];
+}
+
+function validationEnvironmentValue(finding: { validation?: Record<string, unknown> }, key: string): unknown {
+  const environment = finding.validation?.environment;
+  if (!environment || typeof environment !== "object" || Array.isArray(environment)) {
+    return undefined;
+  }
+  return (environment as Record<string, unknown>)[key];
 }
 
 function formatRefs(value: unknown): string {

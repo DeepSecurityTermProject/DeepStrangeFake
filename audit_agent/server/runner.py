@@ -20,6 +20,14 @@ def build_audit_config(request: ScanRunRequest, cwd: str | Path | None = None) -
     if request.validation_level:
         config.default_validation_level = request.validation_level
     config.sandbox.enabled = request.sandbox_enabled
+    if request.sandbox_runner:
+        config.sandbox.runner = request.sandbox_runner
+    if request.sandbox_docker_image:
+        config.sandbox.docker_image = request.sandbox_docker_image
+    if request.sandbox_docker_context:
+        config.sandbox.docker_context = request.sandbox_docker_context
+    if request.sandbox_docker_host:
+        config.sandbox.docker_host = request.sandbox_docker_host
     if request.runtime:
         config.runtime_enabled = True
     if request.llm_provider:

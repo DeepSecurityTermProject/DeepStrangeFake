@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 MemoryMode = Literal["lexical", "embedding", "off"]
 McpMode = Literal["on", "off", "degraded"]
 ValidationLevel = Literal["static-only", "poc-generate", "sandbox", "manual"]
+SandboxRunner = Literal["local", "docker"]
 
 
 class StrictModel(BaseModel):
@@ -25,6 +26,10 @@ class ScanRunRequest(StrictModel):
     mcp_mode: McpMode | None = None
     validation_level: ValidationLevel | None = None
     sandbox_enabled: bool = False
+    sandbox_runner: SandboxRunner | None = None
+    sandbox_docker_image: str | None = None
+    sandbox_docker_context: str | None = None
+    sandbox_docker_host: str | None = None
     include_patterns: list[str] | None = None
     exclude_patterns: list[str] | None = None
     output: str | None = None

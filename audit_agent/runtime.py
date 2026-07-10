@@ -784,6 +784,7 @@ class AgentRuntime:
                 validation_task.record_artifact(ref)
                 self.run_state.record_artifact(ref)
             if self.bus:
+                environment = validation.environment or {}
                 msg = self.bus.publish(
                     "validation",
                     "verification",
@@ -792,6 +793,11 @@ class AgentRuntime:
                         "finding_id": decision.finding_id,
                         "status": validation.verification_status or validation.status,
                         "level": validation.level,
+                        "runner": environment.get("runner", ""),
+                        "docker_image": environment.get("docker_image", ""),
+                        "exit_code": validation.exit_code,
+                        "timed_out": validation.timed_out,
+                        "sandbox_result_refs": validation.sandbox_result_refs,
                         "judge_reason": validation.judge_reason,
                         "blocking_reason": validation.verification_reason
                         if (validation.verification_status or validation.status) == VerificationStatus.MANUAL_REQUIRED
@@ -839,6 +845,14 @@ class AgentRuntime:
                 "verification": {
                     **status_counts,
                     "candidate_count": len(decisions),
+                    "runner_counts": _runner_counts(validation_results),
+                    "docker_images": sorted(
+                        {
+                            str(result.environment.get("docker_image"))
+                            for result in validation_results
+                            if result.environment.get("runner") == "docker" and result.environment.get("docker_image")
+                        }
+                    ),
                     "attempt_refs": [
                         ref
                         for result in validation_results
@@ -1103,6 +1117,14 @@ class AgentRuntime:
             arguments = dict(request.get("arguments") or {})
             result = self.tool_broker.dispatch("recon", tool_name, arguments, metadata=metadata, memory_store=memory_store, task_state=task)
             self.runtime_refs["tool_call_refs"].append(result.id or "")
+
+
+def _runner_counts(validation_results) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in validation_results:
+        runner = str((result.environment or {}).get("runner") or "unknown")
+        counts[runner] = counts.get(runner, 0) + 1
+    return counts
 
 
 def default_agent_registry(config: AuditConfig | None = None) -> AgentRegistry:

@@ -85,6 +85,10 @@ class WebBackendApiTests(unittest.TestCase):
             self.assertIn("static-only", options["validation_levels"])
             self.assertIn("analysis", options["llm_decision_roles"])
             self.assertIn("tests/**", options["default_exclude_patterns"])
+            self.assertIn("docker", options["sandbox_runners"])
+            self.assertEqual("python:3.12-slim", options["default_docker_image"])
+            self.assertIn("default_docker_context", options)
+            self.assertIn("default_docker_host", options)
             self.assertNotIn("api_key", json.dumps(options).lower())
 
             create_response = client.post(
@@ -99,6 +103,10 @@ class WebBackendApiTests(unittest.TestCase):
                     "mcp_mode": "off",
                     "validation_level": "static-only",
                     "sandbox_enabled": True,
+                    "sandbox_runner": "docker",
+                    "sandbox_docker_image": options["default_docker_image"],
+                    "sandbox_docker_context": "desktop-linux",
+                    "sandbox_docker_host": "npipe:////./pipe/dockerDesktopLinuxEngine",
                     "include_patterns": ["src/**"],
                     "exclude_patterns": options["default_exclude_patterns"],
                 },
@@ -282,6 +290,10 @@ class WebBackendRunnerTests(unittest.TestCase):
             mcp_mode="degraded",
             validation_level="poc-generate",
             sandbox_enabled=True,
+            sandbox_runner="docker",
+            sandbox_docker_image="python:3.12-slim",
+            sandbox_docker_context="desktop-linux",
+            sandbox_docker_host="npipe:////./pipe/dockerDesktopLinuxEngine",
             include_patterns=["src/**"],
             exclude_patterns=["tests/**", "fixtures/**"],
         )
@@ -298,6 +310,10 @@ class WebBackendRunnerTests(unittest.TestCase):
         self.assertTrue(config.mcp.degraded_mode)
         self.assertEqual(config.default_validation_level, "poc-generate")
         self.assertTrue(config.sandbox.enabled)
+        self.assertEqual(config.sandbox.runner, "docker")
+        self.assertEqual(config.sandbox.docker_image, "python:3.12-slim")
+        self.assertEqual(config.sandbox.docker_context, "desktop-linux")
+        self.assertEqual(config.sandbox.docker_host, "npipe:////./pipe/dockerDesktopLinuxEngine")
         self.assertEqual(config.audit_scope.include_patterns, ["src/**"])
         self.assertEqual(config.audit_scope.exclude_patterns, ["tests/**", "fixtures/**"])
 
