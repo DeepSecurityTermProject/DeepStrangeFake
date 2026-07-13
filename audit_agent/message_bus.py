@@ -89,6 +89,19 @@ def replay_summary(log_path: Path | str) -> dict:
         "confirmed": 0,
         "rejected": 0,
     }
+    repair_lifecycle = {
+        "events": [],
+        "classifications": {},
+        "repair_requests": 0,
+        "validated_responses": 0,
+        "contract_denials": 0,
+        "semantic_denials": 0,
+        "safety_denials": 0,
+        "runner_starts": 0,
+        "judge_results": {},
+        "duplicates": 0,
+        "target_integrity_changes": 0,
+    }
     for message in messages:
         counts[message.message_type] = counts.get(message.message_type, 0) + 1
         if message.message_type.startswith("decision.") or message.message_type == "llm.decision":
@@ -118,12 +131,15 @@ def replay_summary(log_path: Path | str) -> dict:
             _add_runtime_lifecycle(runtime_lifecycle, message)
         if message.message_type == "verification.attempt":
             _add_sandbox_lifecycle(sandbox_lifecycle, message)
+        if message.message_type.startswith("poc."):
+            _add_repair_lifecycle(repair_lifecycle, message)
     return {
         "message_count": len(messages),
         "types": counts,
         "decision_lifecycle": lifecycle,
         "runtime_lifecycle": runtime_lifecycle,
         "sandbox_lifecycle": sandbox_lifecycle,
+        "repair_lifecycle": repair_lifecycle,
     }
 
 
@@ -188,3 +204,42 @@ def _add_sandbox_lifecycle(sandbox_lifecycle: dict, message: MessageEnvelope) ->
         sandbox_lifecycle["confirmed"] += 1
     if status == "rejected":
         sandbox_lifecycle["rejected"] += 1
+
+
+def _add_repair_lifecycle(repair_lifecycle: dict, message: MessageEnvelope) -> None:
+    payload = message.payload
+    event = {
+        "message_id": message.id,
+        "type": message.message_type,
+        "finding_id": payload.get("finding_id"),
+        "attempt_index": payload.get("attempt_index"),
+        "status": payload.get("status") or payload.get("judge_status"),
+        "failure_class": payload.get("failure_class"),
+        "edit_hash": payload.get("edit_hash"),
+        "script_hash": payload.get("script_hash"),
+        "rule_ids": payload.get("rule_ids", []),
+        "artifact_refs": list(message.artifact_refs),
+    }
+    repair_lifecycle["events"].append(event)
+    if message.message_type == "poc.classification":
+        value = str(payload.get("failure_class") or "unknown")
+        repair_lifecycle["classifications"][value] = repair_lifecycle["classifications"].get(value, 0) + 1
+    elif message.message_type == "poc.repair.request":
+        repair_lifecycle["repair_requests"] += 1
+    elif message.message_type == "poc.repair.response":
+        repair_lifecycle["validated_responses"] += 1
+    elif message.message_type == "poc.repair.contract-denied":
+        repair_lifecycle["contract_denials"] += 1
+    elif message.message_type == "poc.semantic-integrity" and payload.get("allowed") is False:
+        repair_lifecycle["semantic_denials"] += 1
+    elif message.message_type == "poc.safety" and payload.get("allowed") is False:
+        repair_lifecycle["safety_denials"] += 1
+    elif message.message_type == "poc.runner.start":
+        repair_lifecycle["runner_starts"] += 1
+    elif message.message_type == "poc.runner.result":
+        status = str(payload.get("judge_status") or "unknown")
+        repair_lifecycle["judge_results"][status] = repair_lifecycle["judge_results"].get(status, 0) + 1
+    elif message.message_type == "poc.repair.duplicate":
+        repair_lifecycle["duplicates"] += 1
+    elif message.message_type == "poc.target-integrity" and payload.get("unchanged") is False:
+        repair_lifecycle["target_integrity_changes"] += 1

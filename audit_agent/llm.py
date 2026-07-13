@@ -113,59 +113,104 @@ class OpenAICompatibleClient:
     def complete(self, request: LLMRequest) -> LLMResponse:
         started = time.monotonic()
         url = self.config.base_url.rstrip("/") + "/chat/completions"
-        body = {
-            "model": request.model or self.config.model,
-            "messages": [{"role": "user", "content": request.prompt}],
-            "temperature": request.temperature,
-        }
-        if request.max_tokens or self.config.max_tokens:
-            body["max_tokens"] = request.max_tokens or self.config.max_tokens
-        data = json.dumps(body).encode("utf-8")
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         last_error: Exception | None = None
-        attempts = max(1, self.config.retry_count + 1)
-        for attempt in range(1, attempts + 1):
-            try:
-                http_request = urllib.request.Request(url, data=data, headers=headers, method="POST")
-                with urllib.request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                    raw = json.loads(response.read().decode("utf-8"))
-                text = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
-                parsed = _try_parse_json(text)
-                return LLMResponse(
-                    request_id=request.id or "",
-                    provider=self.config.provider,
-                    model=raw.get("model") or request.model or self.config.model,
-                    text=text,
-                    parsed_json=parsed,
-                    usage=raw.get("usage", {}),
-                    finish_reason=raw.get("choices", [{}])[0].get("finish_reason"),
-                    latency_ms=int((time.monotonic() - started) * 1000),
-                    raw_response=raw,
-                )
-            except urllib.error.HTTPError as exc:
-                last_error = exc
-                if exc.code in {401, 403}:
-                    raise _provider_error("authentication", self.config, attempt, exc, exc.code)
-                if exc.code == 429:
-                    raise _provider_error("rate_limit", self.config, attempt, exc, exc.code)
-            except (TimeoutError, socket.timeout) as exc:
-                last_error = exc
-                if attempt >= attempts:
-                    raise _provider_error("timeout", self.config, attempt, exc)
-            except json.JSONDecodeError as exc:
-                last_error = exc
-                if attempt >= attempts:
-                    raise _provider_error("invalid_json", self.config, attempt, exc)
-            except urllib.error.URLError as exc:
-                last_error = exc
-                if attempt >= attempts:
-                    error_type = "timeout" if isinstance(exc.reason, (TimeoutError, socket.timeout)) else "network"
-                    raise _provider_error(error_type, self.config, attempt, exc)
-            except OSError as exc:
-                last_error = exc
-                if attempt >= attempts:
-                    raise _provider_error("network", self.config, attempt, exc)
-        raise _provider_error("provider", self.config, attempts, last_error or RuntimeError("unknown provider error"))
+        attempts_per_format = max(1, self.config.retry_count + 1)
+        total_attempts = 0
+        response_formats = _response_format_candidates(request)
+        for format_index, response_format in enumerate(response_formats):
+            data = json.dumps(_request_body(request, self.config, response_format)).encode("utf-8")
+            for retry_index in range(1, attempts_per_format + 1):
+                total_attempts += 1
+                try:
+                    http_request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+                    with urllib.request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
+                        raw = json.loads(response.read().decode("utf-8"))
+                    text = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    parsed = _try_parse_json(text)
+                    return LLMResponse(
+                        request_id=request.id or "",
+                        provider=self.config.provider,
+                        model=raw.get("model") or request.model or self.config.model,
+                        text=text,
+                        parsed_json=parsed,
+                        usage=raw.get("usage", {}),
+                        finish_reason=raw.get("choices", [{}])[0].get("finish_reason"),
+                        latency_ms=int((time.monotonic() - started) * 1000),
+                        raw_response=raw,
+                    )
+                except urllib.error.HTTPError as exc:
+                    last_error = exc
+                    if exc.code in {401, 403}:
+                        raise _provider_error("authentication", self.config, total_attempts, exc, exc.code)
+                    if exc.code == 429:
+                        raise _provider_error("rate_limit", self.config, total_attempts, exc, exc.code)
+                    has_format_fallback = format_index + 1 < len(response_formats)
+                    if exc.code == 400 and response_format == "json_schema" and has_format_fallback:
+                        break
+                    if exc.code == 400 or retry_index >= attempts_per_format:
+                        raise _provider_error("invalid_request", self.config, total_attempts, exc, exc.code)
+                except (TimeoutError, socket.timeout) as exc:
+                    last_error = exc
+                    if retry_index >= attempts_per_format:
+                        raise _provider_error("timeout", self.config, total_attempts, exc)
+                except json.JSONDecodeError as exc:
+                    last_error = exc
+                    if retry_index >= attempts_per_format:
+                        raise _provider_error("invalid_json", self.config, total_attempts, exc)
+                except urllib.error.URLError as exc:
+                    last_error = exc
+                    if retry_index >= attempts_per_format:
+                        error_type = "timeout" if isinstance(exc.reason, (TimeoutError, socket.timeout)) else "network"
+                        raise _provider_error(error_type, self.config, total_attempts, exc)
+                except OSError as exc:
+                    last_error = exc
+                    if retry_index >= attempts_per_format:
+                        raise _provider_error("network", self.config, total_attempts, exc)
+        raise _provider_error(
+            "provider",
+            self.config,
+            total_attempts,
+            last_error or RuntimeError("unknown provider error"),
+        )
+
+
+def _response_format_candidates(request: LLMRequest) -> list[str | None]:
+    mode = request.response_format
+    if not mode or not request.response_schema:
+        return [None]
+    if mode == "auto":
+        return ["json_schema", "json_object"]
+    if mode in {"json_schema", "json_object"}:
+        return [mode]
+    raise LLMConfigurationError(f"Unsupported response format: {mode}")
+
+
+def _request_body(
+    request: LLMRequest,
+    config: LlmConfig,
+    response_format: str | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "model": request.model or config.model,
+        "messages": [{"role": "user", "content": request.prompt}],
+        "temperature": request.temperature,
+    }
+    if request.max_tokens or config.max_tokens:
+        body["max_tokens"] = request.max_tokens or config.max_tokens
+    if response_format == "json_schema":
+        schema_name = "".join(character if character.isalnum() else "_" for character in request.role).strip("_")
+        body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_name or "structured_response",
+                "strict": True,
+                "schema": request.response_schema,
+            },
+        }
+    elif response_format == "json_object":
+        body["response_format"] = {"type": "json_object"}
+    return body
 
 
 def build_llm_client(config: LlmConfig) -> LLMClient:
@@ -226,6 +271,19 @@ def _try_parse_json(text: str) -> Any:
 
 
 def _default_payload_for_role(role: str) -> dict[str, Any]:
+    if role == "poc-repair":
+        return {
+            "diagnosis": "The generated harness is missing pathlib.Path.",
+            "edits": [
+                {
+                    "op": "add_import",
+                    "slot_id": "imports",
+                    "module": "pathlib",
+                    "name": "Path",
+                }
+            ],
+            "changes": ["Add the allowlisted Path import in the declared imports slot."],
+        }
     if role == "orchestrator":
         return {
             "role": "orchestrator",

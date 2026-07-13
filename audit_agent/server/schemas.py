@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 MemoryMode = Literal["lexical", "embedding", "off"]
@@ -30,9 +30,27 @@ class ScanRunRequest(StrictModel):
     sandbox_docker_image: str | None = None
     sandbox_docker_context: str | None = None
     sandbox_docker_host: str | None = None
+    llm_poc_repair: bool = False
+    max_repair_attempts: int = Field(default=1, ge=0, le=2)
     include_patterns: list[str] | None = None
     exclude_patterns: list[str] | None = None
     output: str | None = None
+
+    @model_validator(mode="after")
+    def validate_poc_repair(self):
+        if not self.llm_poc_repair:
+            return self
+        if not self.runtime:
+            raise ValueError("LLM PoC repair requires runtime LLM client configuration")
+        if self.validation_level != "sandbox":
+            raise ValueError("LLM PoC repair requires validation_level='sandbox'")
+        if not self.sandbox_enabled:
+            raise ValueError("LLM PoC repair requires sandbox_enabled=true")
+        if self.sandbox_runner != "docker":
+            raise ValueError("LLM PoC repair requires sandbox_runner='docker'")
+        if self.llm_provider not in {None, "mock", "openai-compatible"}:
+            raise ValueError("LLM PoC repair requires a configured mock or real provider")
+        return self
 
 
 class CreateRunResponse(StrictModel):

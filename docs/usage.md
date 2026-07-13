@@ -108,7 +108,7 @@ npm run dev -- --port 18173
 The UI supports:
 
 - creating scan runs with target, runtime, provider, LLM decisions, memory, MCP,
-  and validation controls;
+  validation, Docker sandbox, and bounded LLM PoC repair controls;
 - browsing queued, running, succeeded, and failed jobs;
 - opening run details with Summary, Findings, Runtime Tasks, Replay, and
   Markdown Report tabs;
@@ -178,11 +178,144 @@ intelligence refs in `reports/report.json` and the Markdown LLM influence
 section. Memory and CVE context remain contextual unless local evidence also
 supports the finding.
 
+## Constrained LLM PoC Repair
+
+LLM PoC repair is disabled by default. It is intended only for local,
+authorized, synthetic fixtures. It never creates the initial PoC and does not
+support live targets. Enable it explicitly with sandbox validation, the Docker
+runner, and a configured mock or real provider:
+
+```powershell
+.\.venv\Scripts\python.exe -m audit_agent scan `
+  --target D:\path\to\authorized-synthetic-fixture `
+  --runtime --llm-provider mock `
+  --validation-level sandbox --sandbox --sandbox-runner docker `
+  --llm-poc-repair --max-repair-attempts 1
+```
+
+`--max-repair-attempts` accepts `0..2` and counts only LLM repair executions.
+The total PoC execution bound is `1 + max_repair_attempts`, because the first
+execution is always the deterministic generator output. Repaired scripts are
+never run by the local process runner.
+
+The equivalent local Web API request is:
+
+```json
+{
+  "target": "fixtures/authorized_repair_fixture",
+  "runtime": true,
+  "llm_provider": "mock",
+  "validation_level": "sandbox",
+  "sandbox_enabled": true,
+  "sandbox_runner": "docker",
+  "llm_poc_repair": true,
+  "max_repair_attempts": 1
+}
+```
+
+The model returns the strict `poc-repair.edits.v1` contract. Supported MVP edit
+operations are:
+
+- `add_import` in a generator-declared import slot, limited to allowlisted
+  standard-library modules;
+- `replace_slot` in a generator-declared target-setup slot.
+
+The repair prompt includes a minimal legal JSON example and the complete nested
+schema for edit items and `changes` string items. OpenAI-compatible clients
+request strict `response_format.json_schema` first. If an otherwise reachable
+endpoint rejects JSON Schema mode with HTTP 400, the client retries once with
+`response_format.type = json_object`. The exact parser remains authoritative in
+both modes: it will not translate `operation` to `op`, split a full import
+`value` into `module`/`name`, or coerce a string `changes` value into an array.
+
+The model cannot return a complete script, command, expected signal, result
+filename, sandbox policy, retry count, or verdict. Trusted code applies edits
+to a copy of the original script, verifies protected AST hashes and immutable
+execution-envelope fields, then applies a conservative Python safety gate.
+Judge-facing markers, SQL measurements, query execution, and result writers
+remain generator-owned. Any repaired script that passes both gates uses the
+fixed Docker Python argv with `--network none`, a read-only root filesystem,
+dropped capabilities, resource limits, and only the attempt directory writable.
+
+Each attempt is stored under:
+
+```text
+runs\<run>\verification\<finding-id>\attempt-<n>\
+  poc.py
+  poc.json
+  repair-manifest.json
+  execution-envelope.json
+  failure-classification.json
+  repair-record*.json
+  semantic-integrity.json
+  safety-gate.json
+  stdout.txt
+  stderr.txt
+  sandbox-result.json
+  verification-attempt*.json
+```
+
+Run-level `target-manifest-before.json`, `target-manifest-after.json`, and
+`target-integrity-comparison.json` prove whether in-scope target files changed.
+Confirmations remain provisional until the comparison is unchanged. A target
+change downgrades provisional confirmation to `manual-required`; deterministic
+rejection evidence is retained with an integrity warning.
+
+High-signal classifications are `harness-error`, `missing-evidence`,
+`policy-denied`, `environment-error`, and `semantic-rejected`. Provider failure,
+invalid contract, unsupported or duplicate edit/script, semantic/safety denial,
+budget exhaustion, and target-integrity change are separate repair stop reasons;
+they do not rewrite the prior PoC failure class.
+
+Troubleshooting:
+
+- `llm-repair-requires-docker`: select `--sandbox-runner docker` and keep sandbox
+  validation enabled.
+- `environment-error`: verify the Docker CLI, daemon, and configured local
+  `python:3.12-slim` image. The default test suite does not pull images.
+- `provider-failure`: verify the selected provider and API-key environment
+  variable. Mock mode requires no network or credentials.
+- `invalid-contract`, `semantic-integrity-denied`, or `safety-denied`: inspect
+  the redacted validation errors and rule IDs; model text is never executed.
+  An `invalid-contract` result is a failed repair smoke, not a successful
+  provider acceptance.
+- `repair-budget-exhausted` or duplicate hashes: widen the edit DSL only through
+  a new generator-specific OpenSpec change, never by relaxing evidence gates.
+
+Default tests use a mock provider and fake Docker runner. Optional live checks
+are gated and never run implicitly:
+
+```powershell
+$env:AUDIT_AGENT_RUN_DOCKER_TESTS = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_docker_sandbox_runner.DockerSandboxRunnerTests.test_live_docker_smoke_when_enabled
+
+$env:AUDIT_AGENT_RUN_REPAIR_PROVIDER_TESTS = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_poc_repair_live_provider
+```
+
+The provider smoke loads the repository `.env` directly and accepts
+`LLM_API_KEY`, `LLM_API_BASE_URL`, and `LLM_MODEL` (or the existing OpenAI-style
+aliases). It passes only when exactly one repair is applied, the fake Docker
+runner executes twice, the final status is `confirmed`, and the target manifest
+is unchanged. Provider failure or `invalid-contract` fails the smoke.
+
+Run these only when local policy explicitly permits container execution or
+provider network access. The provider smoke still uses an authorized synthetic
+fixture and a fake Docker runner; it does not connect to a target system.
+
+Reports and replay expose compact repair summaries, hashes, statuses, stop
+reasons, and artifact references. They do not embed prompts, normalized model
+responses, or executable scripts. This change intentionally does not add a
+generic artifact-read API or a full Web prompt/response/script inspector; that
+requires a separate security-focused change.
+
 ## Prompt Templates
 
 Prompt templates are versioned by role and template ID. The built-in templates
 cover Orchestrator, Recon, Analysis, and Verification, and each template declares
 required variables, a JSON output schema, safety constraints, and a version.
+The repair role additionally uses the exact `poc-repair.edits.v1` typed-edit
+contract and a dedicated parser rather than the generic schema helper.
 Students can edit or add templates as long as required variables and output
 schemas remain valid.
 
@@ -271,7 +404,10 @@ with:
 
 The replay output includes `runtime_lifecycle`, which summarizes task statuses,
 tool calls, tool denials, service failures, artifacts, and fallback reasons by
-role. For the full persisted runtime graph, open:
+role. Runs with PoC repair also include an ordered `repair_lifecycle` with
+classification, request/response, contract, assembly, semantic, safety, runner,
+Judge, duplicate/budget, and target-integrity events. For the full persisted
+runtime graph, open:
 
 ```powershell
 Get-Content runs\<run>\runtime_state\state.json

@@ -121,6 +121,11 @@ class VerificationAgentV2Tests(unittest.TestCase):
             self.assertIn("target_expression", poc_metadata["expected_signal"])
             self.assertIn("/srv/files/", poc_metadata["expected_signal"]["target_expression"])
             self.assertIn("filename", poc_metadata["expected_signal"]["target_expression"])
+            self.assertTrue(poc_metadata["repair_manifest_ref"])
+            manifest = json.loads(Path(poc_metadata["repair_manifest_ref"]).read_text(encoding="utf-8"))
+            self.assertEqual({"imports", "setup"}, {slot["slot_id"] for slot in manifest["editable_slots"]})
+            self.assertIn("marker", {node["category"] for node in manifest["protected_nodes"]})
+            self.assertTrue(manifest["manifest_hash"])
             self.assertTrue(refs)
             self.assertTrue(artifact_refs_under_run(refs, run_dir))
             for ref in refs:
@@ -190,7 +195,7 @@ class VerificationAgentV2Tests(unittest.TestCase):
             self.assertFalse(result.poc_refs)
             self.assertIn("target", result.reason.lower())
 
-    def test_repair_loop_uses_previous_failure_to_patch_generated_harness(self):
+    def test_legacy_unmanifested_harness_is_not_repaired_by_default(self):
         class RepairableHarnessGenerator:
             generator_id = "test-repairable-harness"
 
@@ -240,20 +245,17 @@ class VerificationAgentV2Tests(unittest.TestCase):
             )
             config = AuditConfig.default()
             config.sandbox.enabled = True
-            config.llm_decisions.max_repair_attempts = 1
             engine = VerificationEngine(config, run_dir=Path(tmp) / "run")
             engine.generator = RepairableHarnessGenerator()
 
             result = engine.verify(decision, metadata, level="sandbox")
 
-            self.assertEqual(VerificationStatus.CONFIRMED, result.status)
+            self.assertEqual(VerificationStatus.MANUAL_REQUIRED, result.status)
+            self.assertEqual("failure-not-repairable", result.final_stop_reason)
             attempt_root = Path(tmp) / "run" / "verification" / finding.id
             self.assertTrue((attempt_root / "attempt-1" / "verification-attempt.json").exists())
             repaired_attempt_path = attempt_root / "attempt-2" / "verification-attempt.json"
-            self.assertTrue(repaired_attempt_path.exists())
-            repaired_attempt = json.loads(repaired_attempt_path.read_text(encoding="utf-8"))
-            self.assertIn("NameError", repaired_attempt["repair_reason"])
-            self.assertIn("from pathlib import Path", (attempt_root / "attempt-2" / "poc.py").read_text(encoding="utf-8"))
+            self.assertFalse(repaired_attempt_path.exists())
 
     def test_judge_requires_expected_signal_not_just_zero_exit_code(self):
         with tempfile.TemporaryDirectory() as tmp:

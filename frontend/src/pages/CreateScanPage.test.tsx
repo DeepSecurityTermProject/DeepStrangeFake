@@ -128,4 +128,26 @@ describe("CreateScanPage", () => {
       sandbox_docker_host: "npipe:////./pipe/dockerDesktopLinuxEngine"
     });
   });
+
+  it("enables bounded LLM PoC repair only with runtime sandbox Docker settings", async () => {
+    renderPage();
+
+    await userEvent.click(screen.getByLabelText(/llm poc repair/i));
+    expect(screen.getByLabelText(/runtime/i)).toBeChecked();
+    expect(screen.getByLabelText(/validation/i)).toHaveValue("sandbox");
+    expect(screen.getByLabelText(/sandbox runner/i)).toHaveValue("docker");
+    await userEvent.selectOptions(screen.getByLabelText(/maximum repair attempts/i), "2");
+    await userEvent.click(screen.getByRole("button", { name: /create scan/i }));
+
+    await waitFor(() => expect(apiClient.createRun).toHaveBeenCalled());
+    const payload = vi.mocked(apiClient.createRun).mock.calls.at(-1)?.[0];
+    expect(payload).toMatchObject({
+      runtime: true,
+      validation_level: "sandbox",
+      sandbox_enabled: true,
+      sandbox_runner: "docker",
+      llm_poc_repair: true,
+      max_repair_attempts: 2
+    });
+  });
 });

@@ -45,6 +45,11 @@ def create_app(
             "default_docker_image": AuditConfig.default().sandbox.docker_image,
             "default_docker_context": AuditConfig.default().sandbox.docker_context or "",
             "default_docker_host": AuditConfig.default().sandbox.docker_host or "",
+            "llm_poc_repair_default": AuditConfig.default().poc_repair.enabled,
+            "max_repair_attempts_default": AuditConfig.default().poc_repair.max_repair_attempts,
+            "max_repair_attempts_range": [0, 2],
+            "poc_repair_effective_source": AuditConfig.default().poc_repair.effective_source,
+            "poc_repair_requires_docker": True,
             "default_exclude_patterns": AuditConfig.default().audit_scope.exclude_patterns,
         }
 

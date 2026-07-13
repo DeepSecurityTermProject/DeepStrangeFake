@@ -89,6 +89,10 @@ class WebBackendApiTests(unittest.TestCase):
             self.assertEqual("python:3.12-slim", options["default_docker_image"])
             self.assertIn("default_docker_context", options)
             self.assertIn("default_docker_host", options)
+            self.assertFalse(options["llm_poc_repair_default"])
+            self.assertEqual(1, options["max_repair_attempts_default"])
+            self.assertEqual([0, 2], options["max_repair_attempts_range"])
+            self.assertTrue(options["poc_repair_requires_docker"])
             self.assertNotIn("api_key", json.dumps(options).lower())
 
             create_response = client.post(
@@ -189,6 +193,29 @@ class WebBackendApiTests(unittest.TestCase):
                 client.post("/api/runs", json={"target": ".", "api_key": "secret"}).status_code,
                 422,
             )
+            invalid_repair_payloads = [
+                {"target": ".", "llm_poc_repair": True},
+                {"target": ".", "runtime": True, "validation_level": "sandbox", "sandbox_enabled": True, "sandbox_runner": "local", "llm_poc_repair": True},
+                {"target": ".", "runtime": True, "validation_level": "sandbox", "sandbox_enabled": True, "sandbox_runner": "docker", "llm_poc_repair": True, "max_repair_attempts": 3},
+            ]
+            for payload in invalid_repair_payloads:
+                with self.subTest(payload=payload):
+                    self.assertEqual(client.post("/api/runs", json=payload).status_code, 422)
+
+            valid_repair = client.post(
+                "/api/runs",
+                json={
+                    "target": ".",
+                    "runtime": True,
+                    "llm_provider": "mock",
+                    "validation_level": "sandbox",
+                    "sandbox_enabled": True,
+                    "sandbox_runner": "docker",
+                    "llm_poc_repair": True,
+                    "max_repair_attempts": 2,
+                },
+            )
+            self.assertEqual(valid_repair.status_code, 202)
 
     def test_unknown_job_returns_structured_404(self):
         from audit_agent.server.app import create_app
@@ -316,6 +343,28 @@ class WebBackendRunnerTests(unittest.TestCase):
         self.assertEqual(config.sandbox.docker_host, "npipe:////./pipe/dockerDesktopLinuxEngine")
         self.assertEqual(config.audit_scope.include_patterns, ["src/**"])
         self.assertEqual(config.audit_scope.exclude_patterns, ["tests/**", "fixtures/**"])
+
+    def test_explicit_repair_request_maps_to_disabled_by_default_config(self):
+        from audit_agent.server.runner import build_audit_config
+        from audit_agent.server.schemas import ScanRunRequest
+
+        default = build_audit_config(ScanRunRequest(target="fixtures/integration_smoke"))
+        self.assertFalse(default.poc_repair.enabled)
+
+        request = ScanRunRequest(
+            target="fixtures/integration_smoke",
+            runtime=True,
+            llm_provider="mock",
+            validation_level="sandbox",
+            sandbox_enabled=True,
+            sandbox_runner="docker",
+            llm_poc_repair=True,
+            max_repair_attempts=2,
+        )
+        config = build_audit_config(request)
+        self.assertTrue(config.poc_repair.enabled)
+        self.assertEqual(2, config.poc_repair.max_repair_attempts)
+        self.assertEqual("explicit", config.poc_repair.effective_source)
 
     def test_runner_updates_job_from_run_audit_result(self):
         from audit_agent.server.job_store import JobStatus, JobStore

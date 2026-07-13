@@ -436,6 +436,8 @@ class AgentRuntime:
                 "runtime_enabled": config.runtime_enabled,
                 "llm_provider": config.llm.provider,
                 "llm_decisions": config.llm_decisions.enabled,
+                "poc_repair": config.poc_repair.enabled,
+                "poc_repair_source": config.poc_repair.effective_source,
             },
         )
         self.bus = self._build_bus(target)
@@ -768,10 +770,16 @@ class AgentRuntime:
         self._finish_task(verification_task, output_refs=[decision.finding_id or "" for decision in decisions])
 
         validation_task = self._start_task("validation", "service")
-        verifier = VerificationEngine(config, self.run.path)
+        verifier = VerificationEngine(
+            config,
+            self.run.path,
+            llm_client=llm_client,
+            message_bus=self.bus,
+        )
         evidence_builder = EvidenceBuilder(self.run.path / "evidence")
         evidence_chains = []
-        validation_results = []
+        staged_validations = []
+        verifier.begin_validation_phase(metadata)
         for decision in decisions:
             for key, values in self.runtime_refs.items():
                 decision.finding.metadata.setdefault(key, [])
@@ -779,7 +787,14 @@ class AgentRuntime:
                     if value and value not in decision.finding.metadata[key]:
                         decision.finding.metadata[key].append(value)
             validation = verifier.verify(decision, metadata, config.default_validation_level)
-            validation_results.append(validation)
+            staged_validations.append((decision.finding, validation))
+
+        validation_results = verifier.finalize_validation_phase(metadata, staged_validations)
+        for ref in verifier.integrity_artifact_refs:
+            validation_task.record_artifact(ref)
+            self.run_state.record_artifact(ref)
+
+        for decision, validation in zip(decisions, validation_results):
             for ref in validation.artifacts:
                 validation_task.record_artifact(ref)
                 self.run_state.record_artifact(ref)
@@ -839,6 +854,13 @@ class AgentRuntime:
                     "enabled": config.llm_decisions.enabled,
                     "roles": config.llm_decisions.roles,
                     "refs": self.runtime_refs["decision_refs"],
+                },
+                "poc_repair": {
+                    "enabled": config.poc_repair.enabled,
+                    "max_repair_attempts": config.poc_repair.max_repair_attempts,
+                    "total_execution_attempts": config.poc_repair.total_execution_attempts,
+                    "effective_source": config.poc_repair.effective_source,
+                    "requires_docker": True,
                 },
                 "message_log": str(self.run.path / "messages" / config.message_bus.log_filename) if self.bus else "",
                 "token_usage": {"mode": "recorded-per-llm-artifact"},

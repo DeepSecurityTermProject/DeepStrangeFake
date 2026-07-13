@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { StatusBadge } from "../components/StatusBadge";
-import type { AuditReport, JobStatusResponse, ReplaySummary, RuntimeState } from "../api/types";
+import type { AuditReport, JobStatusResponse, ReplaySummary, ReportFinding, RuntimeState } from "../api/types";
 
 type TabId = "summary" | "findings" | "runtime" | "replay" | "markdown";
 
@@ -110,6 +110,18 @@ function FindingsTab({ reportJson }: { reportJson?: AuditReport }) {
             <dd>{stringValue(validationEnvironmentValue(finding, "docker_image"))}</dd>
             <dt>Judge</dt>
             <dd>{stringValue(validationValue(finding, "judge_reason"))}</dd>
+            <dt>Repair attempts</dt>
+            <dd>{stringValue(repairSummaryValue(finding, "attempt_count") ?? validationValue(finding, "repair_attempt_count"))}</dd>
+            <dt>Repair classifications</dt>
+            <dd>{formatRepairClassifications(repairSummaryValue(finding, "classifications"))}</dd>
+            <dt>Semantic integrity</dt>
+            <dd>{stringValue(repairSummaryValue(finding, "semantic_integrity_status"))}</dd>
+            <dt>Safety gate</dt>
+            <dd>{stringValue(repairSummaryValue(finding, "safety_status"))}</dd>
+            <dt>Repair stop</dt>
+            <dd>{stringValue(repairSummaryValue(finding, "final_stop_reason"))}</dd>
+            <dt>Target integrity</dt>
+            <dd>{formatIntegrity(repairSummaryValue(finding, "integrity"))}</dd>
             <dt>stdout</dt>
             <dd>{stringValue(validationValue(finding, "stdout_preview"))}</dd>
             <dt>stderr</dt>
@@ -178,6 +190,7 @@ function ReplayTab({ replaySummary }: { replaySummary?: ReplaySummary }) {
       <Metric label="Message count" value={String(replaySummary.message_count ?? 0)} />
       <JsonBlock title="Decision lifecycle" value={replaySummary.decision_lifecycle ?? {}} />
       <JsonBlock title="Runtime lifecycle" value={replaySummary.runtime_lifecycle ?? {}} />
+      <JsonBlock title="PoC repair lifecycle" value={replaySummary.repair_lifecycle ?? {}} />
     </div>
   );
 }
@@ -228,6 +241,42 @@ function validationEnvironmentValue(finding: { validation?: Record<string, unkno
     return undefined;
   }
   return (environment as Record<string, unknown>)[key];
+}
+
+function repairSummaryValue(
+  finding: ReportFinding,
+  key: string
+): unknown {
+  return (finding.repair_summary as Record<string, unknown> | undefined)?.[key];
+}
+
+function formatRepairClassifications(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) {
+    return "n/a";
+  }
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return String(entry);
+      }
+      const record = entry as Record<string, unknown>;
+      return `${stringValue(record.failure_class)}@${stringValue(record.attempt_index)}`;
+    })
+    .join(" | ");
+}
+
+function formatIntegrity(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "n/a";
+  }
+  const integrity = value as Record<string, unknown>;
+  if (integrity.unchanged === true) {
+    return "unchanged";
+  }
+  if (integrity.unchanged === false) {
+    return `changed (${stringValue(integrity.changed_count)} changed, ${stringValue(integrity.added_count)} added, ${stringValue(integrity.removed_count)} removed)`;
+  }
+  return "n/a";
 }
 
 function formatRefs(value: unknown): string {

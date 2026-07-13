@@ -54,6 +54,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Docker host endpoint for Docker sandbox execution, such as npipe:////./pipe/dockerDesktopLinuxEngine.",
     )
+    scan.add_argument(
+        "--llm-poc-repair",
+        action="store_true",
+        help="Explicitly enable constrained LLM PoC repair. Requires sandbox validation with the Docker runner.",
+    )
+    scan.add_argument(
+        "--max-repair-attempts",
+        type=int,
+        default=None,
+        help="Maximum LLM repair executions in 0..2, in addition to the deterministic initial execution.",
+    )
     scan.add_argument("--runtime", action="store_true", help="Enable LLM runtime, prompt, memory, MCP, and message logs.")
     scan.add_argument("--llm-provider", default=None, help="LLM provider, such as mock or openai-compatible.")
     scan.add_argument("--model", default=None, help="LLM model name.")
@@ -120,6 +131,10 @@ def main(argv: list[str] | None = None) -> int:
     _apply_runtime_args(config, args)
 
     if args.command == "scan":
+        try:
+            config.validate_poc_repair_prerequisites()
+        except ValueError as exc:
+            parser.error(str(exc))
         result = run_audit(args.target, config, args.output)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -178,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 def _apply_runtime_args(config: AuditConfig, args) -> None:
+    if getattr(args, "validation_level", None):
+        config.default_validation_level = args.validation_level
     if getattr(args, "llm_decisions", False):
         config.runtime_enabled = True
         config.llm_decisions.enabled = True
@@ -215,6 +232,13 @@ def _apply_runtime_args(config: AuditConfig, args) -> None:
         config.sandbox.docker_context = args.sandbox_docker_context
     if getattr(args, "sandbox_docker_host", None):
         config.sandbox.docker_host = args.sandbox_docker_host
+    if getattr(args, "llm_poc_repair", False):
+        config.poc_repair.enabled = True
+        config.poc_repair.effective_source = "explicit"
+        config.runtime_enabled = True
+    if getattr(args, "max_repair_attempts", None) is not None:
+        config.poc_repair.max_repair_attempts = args.max_repair_attempts
+        config.poc_repair.effective_source = "explicit"
 
 
 def _add_integration_flags(parser: argparse.ArgumentParser) -> None:

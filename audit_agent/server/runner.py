@@ -28,6 +28,13 @@ def build_audit_config(request: ScanRunRequest, cwd: str | Path | None = None) -
         config.sandbox.docker_context = request.sandbox_docker_context
     if request.sandbox_docker_host:
         config.sandbox.docker_host = request.sandbox_docker_host
+    config.poc_repair.enabled = request.llm_poc_repair
+    config.poc_repair.max_repair_attempts = request.max_repair_attempts
+    config.poc_repair.effective_source = (
+        "explicit"
+        if {"llm_poc_repair", "max_repair_attempts"} & set(request.model_fields_set)
+        else "default"
+    )
     if request.runtime:
         config.runtime_enabled = True
     if request.llm_provider:
@@ -49,6 +56,7 @@ def build_audit_config(request: ScanRunRequest, cwd: str | Path | None = None) -
         config.audit_scope.include_patterns = list(request.include_patterns)
     if request.exclude_patterns is not None:
         config.audit_scope.exclude_patterns = list(request.exclude_patterns)
+    config.validate_poc_repair_prerequisites()
     return config
 
 

@@ -15,6 +15,12 @@ from .config import AuditConfig
 from .models import (
     Finding,
     PoCArtifact,
+    PoCFailureClass,
+    PoCFailureClassification,
+    PoCRepairRecord,
+    PoCSafetyDecision,
+    PoCSemanticIntegrityDecision,
+    RepairStopReason,
     RepositoryMetadata,
     SandboxRunResult,
     ValidationResult,
@@ -24,6 +30,26 @@ from .models import (
     to_plain,
     utc_now,
 )
+from .poc_repair import (
+    IMPORT_SLOT_BEGIN,
+    IMPORT_SLOT_END,
+    SETUP_SLOT_BEGIN,
+    SETUP_SLOT_END,
+    LLMPoCRepairAgent,
+    PoCFailureClassifier,
+    PoCSafetyGate,
+    PoCSemanticIntegrityGate,
+    TrustedPoCAssembler,
+    build_and_persist_repair_manifest,
+    build_repair_context,
+    build_target_manifest,
+    compare_target_manifests,
+    load_repair_manifest,
+    persist_gate_record,
+    persist_execution_envelope,
+    sha256_text,
+)
+from .redaction import redact_text
 from .storage import immutable_path
 
 
@@ -78,7 +104,8 @@ class PathTraversalPoCGenerator:
         root = _attempt_dir(run_dir, finding.id or stable_id("F", finding.title), attempt_index)
         root.mkdir(parents=True, exist_ok=True)
         script = immutable_path(root / "poc_path_traversal.py")
-        script.write_text(_path_traversal_script(plan, repair_context=repair_context), encoding="utf-8")
+        script_text = _path_traversal_script(plan, repair_context=repair_context)
+        script.write_text(script_text, encoding="utf-8")
         expected_signal = {
             "kind": "stdout-contains",
             "value": "PATH_TRAVERSAL_CONFIRMED",
@@ -110,7 +137,20 @@ class PathTraversalPoCGenerator:
             source_refs=list(finding.metadata.get("local_evidence_refs", [])),
             dataflow_trace_refs=list(finding.metadata.get("dataflow_trace_refs", [])),
             target_file_refs=[finding.location.path],
+            script_hash=sha256_text(script_text),
+            attempt_index=attempt_index,
         )
+        manifest = build_and_persist_repair_manifest(
+            finding_id=poc.finding_id,
+            generator_id=poc.generator_id,
+            script_text=script_text,
+            attempt_dir=root,
+            expected_signal=expected_signal,
+        )
+        poc.repair_manifest_ref = manifest.metadata_path
+        poc.repair_manifest_hash = manifest.manifest_hash
+        poc.protected_node_hashes = {item.node_id: item.ast_hash for item in manifest.protected_nodes}
+        persist_execution_envelope(poc, root)
         metadata_path = immutable_path(root / "poc.json")
         poc.metadata_path = str(metadata_path)
         metadata_path.write_text(json.dumps(poc.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -145,7 +185,8 @@ class SQLInjectionPoCGenerator:
         root = _attempt_dir(run_dir, finding.id or stable_id("F", finding.title), attempt_index)
         root.mkdir(parents=True, exist_ok=True)
         script = immutable_path(root / "poc_sql_injection.py")
-        script.write_text(_sqli_script(plan, repair_context=repair_context), encoding="utf-8")
+        script_text = _sqli_script(plan, repair_context=repair_context)
+        script.write_text(script_text, encoding="utf-8")
         expected_signal = {
             "kind": "sqli-semantic-result",
             "result_filename": "sqli-result.json",
@@ -178,7 +219,20 @@ class SQLInjectionPoCGenerator:
             source_refs=list(finding.metadata.get("local_evidence_refs", [])),
             dataflow_trace_refs=list(finding.metadata.get("dataflow_trace_refs", [])),
             target_file_refs=[finding.location.path],
+            script_hash=sha256_text(script_text),
+            attempt_index=attempt_index,
         )
+        manifest = build_and_persist_repair_manifest(
+            finding_id=poc.finding_id,
+            generator_id=poc.generator_id,
+            script_text=script_text,
+            attempt_dir=root,
+            expected_signal=expected_signal,
+        )
+        poc.repair_manifest_ref = manifest.metadata_path
+        poc.repair_manifest_hash = manifest.manifest_hash
+        poc.protected_node_hashes = {item.node_id: item.ast_hash for item in manifest.protected_nodes}
+        persist_execution_envelope(poc, root)
         metadata_path = immutable_path(root / "poc.json")
         poc.metadata_path = str(metadata_path)
         metadata_path.write_text(json.dumps(poc.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -240,8 +294,9 @@ class LocalSandboxRunner:
                 shell=False,
                 env=self._sanitized_env(),
             )
-            stdout = completed.stdout or ""
-            stderr = completed.stderr or ""
+            secrets = _runner_secret_values(self.config)
+            stdout = redact_text(completed.stdout or "", secrets)
+            stderr = redact_text(completed.stderr or "", secrets)
             stdout_path.write_text(stdout, encoding="utf-8", errors="ignore")
             stderr_path.write_text(stderr, encoding="utf-8", errors="ignore")
             result = SandboxRunResult(
@@ -268,8 +323,9 @@ class LocalSandboxRunner:
             )
             return self._persist_result(result, attempt_dir)
         except subprocess.TimeoutExpired as exc:
-            stdout = _decode_timeout_output(exc.stdout)
-            stderr = _decode_timeout_output(exc.stderr)
+            secrets = _runner_secret_values(self.config)
+            stdout = redact_text(_decode_timeout_output(exc.stdout), secrets)
+            stderr = redact_text(_decode_timeout_output(exc.stderr), secrets)
             stdout_path.write_text(stdout, encoding="utf-8", errors="ignore")
             stderr_path.write_text(stderr, encoding="utf-8", errors="ignore")
             result = SandboxRunResult(
@@ -388,6 +444,9 @@ class DockerSandboxRunner:
             timed_out: bool = False,
             policy_allowed: bool = False,
         ) -> SandboxRunResult:
+            secrets = _runner_secret_values(self.config)
+            stdout = redact_text(stdout, secrets)
+            stderr = redact_text(stderr, secrets)
             stdout_path.write_text(stdout, encoding="utf-8", errors="ignore")
             stderr_path.write_text(stderr, encoding="utf-8", errors="ignore")
             result = SandboxRunResult(
@@ -798,7 +857,7 @@ class VerificationJudge:
         )
 
 
-class VerificationEngine:
+class _LegacyVerificationEngine:
     def __init__(self, config: AuditConfig, run_dir: str | Path):
         self.config = config
         self.run_dir = Path(run_dir)
@@ -1021,6 +1080,850 @@ class VerificationEngine:
         return validation
 
 
+class VerificationEngine(_LegacyVerificationEngine):
+    """Evidence-first PoC execution with a bounded, policy-gated LLM repair loop."""
+
+    def __init__(
+        self,
+        config: AuditConfig,
+        run_dir: str | Path,
+        *,
+        llm_client: Any | None = None,
+        message_bus: Any | None = None,
+        repair_agent: LLMPoCRepairAgent | None = None,
+    ):
+        super().__init__(config, run_dir)
+        self.message_bus = message_bus
+        self.failure_classifier = PoCFailureClassifier()
+        self.assembler = TrustedPoCAssembler()
+        self.semantic_gate = PoCSemanticIntegrityGate()
+        self.safety_gate = PoCSafetyGate()
+        self.repair_agent = repair_agent
+        if self.repair_agent is None and llm_client is not None:
+            self.repair_agent = LLMPoCRepairAgent(llm_client, config, self.run_dir, message_bus)
+        self._before_manifest = None
+        self._pending_attempts: dict[str, VerificationAttempt | None] = {}
+        self.integrity_artifact_refs: list[str] = []
+        self._validation_phase_active = False
+
+    def begin_validation_phase(self, metadata: RepositoryMetadata) -> None:
+        """Capture the run-level baseline before any finding validation starts."""
+        if self._validation_phase_active:
+            raise RuntimeError("Validation phase is already active.")
+        self._before_manifest = None
+        self._pending_attempts.clear()
+        self.integrity_artifact_refs = []
+        self._validation_phase_active = True
+        self._ensure_before_manifest(metadata)
+
+    def verify_and_finalize_single(
+        self,
+        decision: VerificationDecision,
+        metadata: RepositoryMetadata,
+        level: str | None = None,
+    ) -> ValidationResult:
+        """Compatibility helper for callers that intentionally validate one finding only."""
+        self.begin_validation_phase(metadata)
+        validation = self.verify(decision, metadata, level)
+        return self.finalize_validation_phase(
+            metadata,
+            [(decision.finding, validation)],
+        )[0]
+
+    def verify(
+        self,
+        decision: VerificationDecision,
+        metadata: RepositoryMetadata,
+        level: str | None = None,
+    ) -> ValidationResult:
+        selected = level or decision.validation_level or self.config.default_validation_level
+        finding = decision.finding
+        self._ensure_before_manifest(metadata)
+        if decision.decision == "reject":
+            return self._stage_provisional(
+                finding,
+                ValidationResult(
+                    finding_id=finding.id or "",
+                    level="manual",
+                    status=VerificationStatus.REJECTED,
+                    verification_status=VerificationStatus.REJECTED,
+                    verification_reason=decision.reason,
+                    message=decision.reason,
+                    artifacts=_local_evidence_refs(finding),
+                ),
+                None,
+            )
+        if selected != "sandbox":
+            reason = "Static evidence reviewed; no runtime proof-of-concept executed."
+            return self._stage_provisional(
+                finding,
+                ValidationResult(
+                    finding_id=finding.id or "",
+                    level=selected,
+                    status=VerificationStatus.LIKELY,
+                    verification_status=VerificationStatus.LIKELY,
+                    verification_reason=reason,
+                    message=reason,
+                    environment={"target_kind": metadata.target.kind},
+                    artifacts=_local_evidence_refs(finding),
+                ),
+                None,
+            )
+        if metadata.target.kind != "local":
+            return self._manual_required(finding, selected, "No-live-target policy blocked sandbox validation.")
+        if not self.config.sandbox.enabled:
+            return self._manual_required(
+                finding, selected, "Sandbox validation requested but sandbox execution is disabled."
+            )
+        generator = self._generator_for(finding)
+        if generator is None:
+            return self._likely(
+                finding,
+                selected,
+                f"Unsupported vulnerability class for MVP PoC execution: {finding.vulnerability_class}; static/dataflow evidence retained.",
+            )
+        original_poc = generator.generate(
+            finding,
+            metadata,
+            self.run_dir,
+            attempt_index=1,
+            repair_context=None,
+        )
+        if original_poc is None:
+            reason = getattr(generator, "failure_reason", "") or (
+                f"Target {finding.vulnerability_class} harness unavailable; trace must match target code and expose a supported expression."
+            )
+            return self._likely(finding, selected, reason)
+
+        manifest = None
+        manifest_error = ""
+        if original_poc.repair_manifest_ref:
+            try:
+                manifest = load_repair_manifest(original_poc.repair_manifest_ref)
+            except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+                manifest_error = str(exc)
+
+        repair_limit = int(getattr(self.config.poc_repair, "max_repair_attempts", 1) or 0)
+        repair_limit = min(2, max(0, repair_limit))
+        seen_script_hashes = {original_poc.script_hash or sha256_text(Path(original_poc.script_path).read_text(encoding="utf-8"))}
+        seen_edit_hashes: set[str] = set()
+        current_poc = original_poc
+        current_repair_record: PoCRepairRecord | None = None
+        all_poc_refs: list[str] = []
+        all_sandbox_refs: list[str] = []
+        all_attempt_refs: list[str] = []
+        all_artifacts: list[str] = []
+        classifications: list[PoCFailureClassification] = []
+        timeline: list[dict[str, Any]] = []
+        last_attempt: VerificationAttempt | None = None
+
+        for attempt_index in range(1, 2 + repair_limit):
+            attempt_dir = _attempt_dir(self.run_dir, finding.id or "unknown", attempt_index)
+            attempt_dir.mkdir(parents=True, exist_ok=True)
+            semantic: PoCSemanticIntegrityDecision | None = None
+            if manifest is not None:
+                semantic = self.semantic_gate.evaluate(
+                    original_poc=original_poc,
+                    candidate_poc=current_poc,
+                    manifest=manifest,
+                    attempt_index=attempt_index,
+                )
+                persist_gate_record(semantic, attempt_dir / "semantic-integrity.json")
+                all_artifacts.append(semantic.metadata_path or "")
+                timeline.append(
+                    {
+                        "stage": "semantic-integrity",
+                        "attempt_index": attempt_index,
+                        "status": "allowed" if semantic.allowed else "denied",
+                        "rule_ids": semantic.rule_ids,
+                        "script_hash": semantic.script_hash,
+                        "artifact_ref": semantic.metadata_path,
+                    }
+                )
+                self._publish(
+                    "poc.semantic-integrity",
+                    finding.id or "",
+                    attempt_index,
+                    {"allowed": semantic.allowed, "rule_ids": semantic.rule_ids, "script_hash": semantic.script_hash},
+                    [semantic.metadata_path or ""],
+                )
+                if not semantic.allowed:
+                    classification = PoCFailureClassification(
+                        finding_id=finding.id or "",
+                        attempt_index=attempt_index,
+                        failure_class=PoCFailureClass.POLICY_DENIED,
+                        eligible=False,
+                        reason=semantic.reason,
+                        stage="semantic-integrity",
+                        evidence_refs=[semantic.metadata_path or ""],
+                    )
+                    persist_gate_record(classification, attempt_dir / "failure-classification.json")
+                    classifications.append(classification)
+                    judge = JudgeOutcome(VerificationStatus.MANUAL_REQUIRED, semantic.reason, [semantic.metadata_path or ""])
+                    last_attempt = self._persist_repair_attempt(
+                        finding=finding,
+                        attempt_index=attempt_index,
+                        poc=current_poc,
+                        sandbox_result=None,
+                        judge=judge,
+                        classification=classification,
+                        repair_record=current_repair_record,
+                        semantic=semantic,
+                        safety=None,
+                        stop_reason=RepairStopReason.SEMANTIC_DENIED,
+                    )
+                    all_attempt_refs.append(last_attempt.metadata_path or "")
+                    validation = self._validation_from_repair_state(
+                        finding, selected, current_poc, None, judge, last_attempt, all_poc_refs,
+                        all_sandbox_refs, all_attempt_refs, all_artifacts, classifications, timeline,
+                        semantic, None, RepairStopReason.SEMANTIC_DENIED,
+                    )
+                    return self._stage_provisional(finding, validation, last_attempt)
+
+            safety = self.safety_gate.evaluate(
+                poc=current_poc,
+                attempt_index=attempt_index,
+                repaired=attempt_index > 1,
+            )
+            persist_gate_record(safety, attempt_dir / "safety-gate.json")
+            all_artifacts.append(safety.metadata_path or "")
+            timeline.append(
+                {
+                    "stage": "safety",
+                    "attempt_index": attempt_index,
+                    "status": "allowed" if safety.allowed else "denied",
+                    "rule_ids": safety.rule_ids,
+                    "script_hash": safety.script_hash,
+                    "artifact_ref": safety.metadata_path,
+                }
+            )
+            self._publish(
+                "poc.safety",
+                finding.id or "",
+                attempt_index,
+                {"allowed": safety.allowed, "rule_ids": safety.rule_ids, "script_hash": safety.script_hash},
+                [safety.metadata_path or ""],
+            )
+            if not safety.allowed:
+                classification = self.failure_classifier.classify(
+                    finding_id=finding.id or "",
+                    attempt_index=attempt_index,
+                    stage="safety",
+                    safety=safety,
+                )
+                persist_gate_record(classification, attempt_dir / "failure-classification.json")
+                classifications.append(classification)
+                stop_reason = RepairStopReason.SAFETY_DENIED
+                judge = JudgeOutcome(VerificationStatus.MANUAL_REQUIRED, safety.reason, [safety.metadata_path or ""])
+                last_attempt = self._persist_repair_attempt(
+                    finding=finding,
+                    attempt_index=attempt_index,
+                    poc=current_poc,
+                    sandbox_result=None,
+                    judge=judge,
+                    classification=classification,
+                    repair_record=current_repair_record,
+                    semantic=semantic,
+                    safety=safety,
+                    stop_reason=stop_reason,
+                )
+                all_attempt_refs.append(last_attempt.metadata_path or "")
+                validation = self._validation_from_repair_state(
+                    finding, selected, current_poc, None, judge, last_attempt, all_poc_refs,
+                    all_sandbox_refs, all_attempt_refs, all_artifacts, classifications, timeline,
+                    semantic, safety, stop_reason,
+                )
+                return self._stage_provisional(finding, validation, last_attempt)
+
+            if attempt_index > 1 and getattr(self.runner, "runner_type", "") != "docker":
+                reason = "LLM-repaired PoCs require the Docker sandbox runner."
+                judge = JudgeOutcome(VerificationStatus.MANUAL_REQUIRED, reason, [])
+                classification = PoCFailureClassification(
+                    finding_id=finding.id or "",
+                    attempt_index=attempt_index,
+                    failure_class=PoCFailureClass.POLICY_DENIED,
+                    eligible=False,
+                    reason=reason,
+                    stage="pre-run",
+                )
+                persist_gate_record(classification, attempt_dir / "failure-classification.json")
+                classifications.append(classification)
+                last_attempt = self._persist_repair_attempt(
+                    finding, attempt_index, current_poc, None, judge, classification,
+                    current_repair_record, semantic, safety, RepairStopReason.REQUIRES_DOCKER,
+                )
+                all_attempt_refs.append(last_attempt.metadata_path or "")
+                validation = self._validation_from_repair_state(
+                    finding, selected, current_poc, None, judge, last_attempt, all_poc_refs,
+                    all_sandbox_refs, all_attempt_refs, all_artifacts, classifications, timeline,
+                    semantic, safety, RepairStopReason.REQUIRES_DOCKER,
+                )
+                return self._stage_provisional(finding, validation, last_attempt)
+
+            all_poc_refs.extend(
+                _dedupe(
+                    [
+                        current_poc.metadata_path,
+                        current_poc.script_path,
+                        current_poc.repair_manifest_ref,
+                        current_poc.immutable_envelope_ref,
+                        current_poc.normalized_edit_ref,
+                    ]
+                )
+            )
+            self._publish(
+                "poc.runner.start",
+                finding.id or "",
+                attempt_index,
+                {
+                    "runner": getattr(self.runner, "runner_type", "unknown"),
+                    "script_hash": current_poc.script_hash or safety.script_hash,
+                },
+                [current_poc.metadata_path or "", safety.metadata_path or ""],
+            )
+            sandbox_result = self.runner.run(current_poc, attempt_index=attempt_index)
+            judge = self.judge.judge(current_poc, sandbox_result)
+            if sandbox_result.metadata_path:
+                all_sandbox_refs.append(sandbox_result.metadata_path)
+            all_artifacts.extend(sandbox_result.artifact_refs)
+            self._publish(
+                "poc.runner.result",
+                finding.id or "",
+                attempt_index,
+                {
+                    "runner": getattr(self.runner, "runner_type", "unknown"),
+                    "runner_status": sandbox_result.status,
+                    "judge_status": judge.status,
+                    "script_hash": current_poc.script_hash or safety.script_hash,
+                },
+                [sandbox_result.metadata_path or "", *judge.evidence_refs],
+            )
+
+            classification = None
+            if judge.status != VerificationStatus.CONFIRMED:
+                compatible_slots = [slot.slot_id for slot in manifest.editable_slots] if manifest else []
+                classification = self.failure_classifier.classify(
+                    finding_id=finding.id or "",
+                    attempt_index=attempt_index,
+                    stage="judge",
+                    sandbox_result=sandbox_result,
+                    judge=judge,
+                    safety=safety,
+                    compatible_slot_ids=compatible_slots,
+                )
+                persist_gate_record(classification, attempt_dir / "failure-classification.json")
+                classifications.append(classification)
+                all_artifacts.append(classification.metadata_path or "")
+                timeline.append(
+                    {
+                        "stage": "classification",
+                        "attempt_index": attempt_index,
+                        "status": classification.failure_class.value,
+                        "eligible": classification.eligible,
+                        "compatible_slot_ids": classification.compatible_slot_ids,
+                        "artifact_ref": classification.metadata_path,
+                    }
+                )
+                self._publish(
+                    "poc.classification",
+                    finding.id or "",
+                    attempt_index,
+                    {
+                        "failure_class": classification.failure_class.value,
+                        "eligible": classification.eligible,
+                        "compatible_slot_ids": classification.compatible_slot_ids,
+                    },
+                    [classification.metadata_path or ""],
+                )
+
+            last_attempt = self._persist_repair_attempt(
+                finding=finding,
+                attempt_index=attempt_index,
+                poc=current_poc,
+                sandbox_result=sandbox_result,
+                judge=judge,
+                classification=classification,
+                repair_record=current_repair_record,
+                semantic=semantic,
+                safety=safety,
+                stop_reason=None,
+            )
+            all_attempt_refs.append(last_attempt.metadata_path or "")
+            all_artifacts.append(last_attempt.metadata_path or "")
+            timeline.append(
+                {
+                    "stage": "judge",
+                    "attempt_index": attempt_index,
+                    "status": judge.status,
+                    "reason": judge.reason,
+                    "script_hash": current_poc.script_hash or safety.script_hash,
+                    "artifact_ref": last_attempt.metadata_path,
+                }
+            )
+            validation = self._validation_from_repair_state(
+                finding, selected, current_poc, sandbox_result, judge, last_attempt, all_poc_refs,
+                all_sandbox_refs, all_attempt_refs, all_artifacts, classifications, timeline,
+                semantic, safety, None,
+            )
+            if judge.status in {VerificationStatus.CONFIRMED, VerificationStatus.REJECTED}:
+                validation.provisional_status = judge.status
+                return self._stage_provisional(finding, validation, last_attempt)
+            if classification is None or not classification.eligible:
+                validation.final_stop_reason = RepairStopReason.NON_REPAIRABLE.value
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            if not self.config.poc_repair.enabled:
+                validation.final_stop_reason = RepairStopReason.DISABLED.value
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            if manifest is None:
+                validation.final_stop_reason = RepairStopReason.UNSUPPORTED_MANIFEST.value
+                validation.verification_reason = manifest_error or "The deterministic generator did not expose a verified repair manifest."
+                validation.message = validation.verification_reason
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            if getattr(self.runner, "runner_type", "") != "docker":
+                validation.final_stop_reason = RepairStopReason.REQUIRES_DOCKER.value
+                validation.verification_reason = "LLM PoC repair requires the Docker sandbox runner."
+                validation.message = validation.verification_reason
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            if self.repair_agent is None:
+                validation.final_stop_reason = RepairStopReason.NO_CLIENT.value
+                validation.verification_reason = "No shared LLM repair client was injected."
+                validation.message = validation.verification_reason
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            repairs_used = attempt_index - 1
+            if repairs_used >= repair_limit:
+                validation.final_stop_reason = RepairStopReason.BUDGET_EXHAUSTED.value
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+
+            try:
+                manifest = load_repair_manifest(original_poc.repair_manifest_ref or "")
+            except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+                validation.final_stop_reason = RepairStopReason.UNSUPPORTED_MANIFEST.value
+                validation.verification_reason = f"Repair manifest could not be reopened and verified: {exc}"
+                validation.message = validation.verification_reason
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            next_attempt = attempt_index + 1
+            next_dir = _attempt_dir(self.run_dir, finding.id or "unknown", next_attempt)
+            context = build_repair_context(
+                poc=current_poc,
+                manifest=manifest,
+                sandbox_result=sandbox_result,
+                judge_reason=judge.reason,
+                finding=finding,
+                metadata=metadata,
+                attempt_index=next_attempt,
+                remaining_budget=repair_limit - repairs_used,
+                secret_values=_runner_secret_values(self.config),
+            )
+            agent_result = self.repair_agent.repair(
+                context=context,
+                manifest=manifest,
+                finding_id=finding.id or "",
+                attempt_index=next_attempt,
+                remaining_budget=repair_limit - repairs_used,
+                attempt_dir=next_dir,
+            )
+            current_repair_record = agent_result.record
+            all_artifacts.extend(
+                _dedupe(
+                    [
+                        current_repair_record.metadata_path,
+                        current_repair_record.prompt_ref,
+                        current_repair_record.response_ref,
+                    ]
+                )
+            )
+            if agent_result.proposal is None:
+                validation.final_stop_reason = (
+                    current_repair_record.stop_reason.value
+                    if current_repair_record.stop_reason
+                    else RepairStopReason.INVALID_CONTRACT.value
+                )
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            proposal = agent_result.proposal
+            incompatible_slots = sorted(
+                {
+                    edit.slot_id
+                    for edit in proposal.edits
+                    if edit.slot_id not in classification.compatible_slot_ids
+                }
+            )
+            if incompatible_slots:
+                current_repair_record.stop_reason = RepairStopReason.UNSUPPORTED_EDIT
+                current_repair_record.status = "incompatible-slot"
+                current_repair_record.validation_errors.append(
+                    "Edits do not match classifier-compatible slots: " + ", ".join(incompatible_slots)
+                )
+                persist_gate_record(current_repair_record, next_dir / "repair-record-incompatible-slot.json")
+                validation.final_stop_reason = RepairStopReason.UNSUPPORTED_EDIT.value
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            if proposal.edit_hash in seen_edit_hashes:
+                current_repair_record.stop_reason = RepairStopReason.DUPLICATE_EDIT
+                current_repair_record.status = "duplicate-edit"
+                persist_gate_record(current_repair_record, next_dir / "repair-record-duplicate.json")
+                validation.final_stop_reason = RepairStopReason.DUPLICATE_EDIT.value
+                last_attempt.stop_reason = validation.final_stop_reason
+                self._publish(
+                    "poc.repair.duplicate",
+                    finding.id or "",
+                    next_attempt,
+                    {"kind": "edit", "hash": proposal.edit_hash},
+                    [current_repair_record.metadata_path or ""],
+                )
+                return self._stage_provisional(finding, validation, last_attempt)
+            seen_edit_hashes.add(proposal.edit_hash)
+            try:
+                assembled = self.assembler.assemble(
+                    original_poc=original_poc,
+                    manifest=manifest,
+                    edits=proposal.edits,
+                    attempt_dir=next_dir,
+                    attempt_index=next_attempt,
+                )
+            except (OSError, ValueError) as exc:
+                current_repair_record.stop_reason = RepairStopReason.UNSUPPORTED_EDIT
+                current_repair_record.status = "assembly-denied"
+                current_repair_record.validation_errors.append(str(exc))
+                persist_gate_record(current_repair_record, next_dir / "repair-record-assembly-denied.json")
+                validation.final_stop_reason = RepairStopReason.UNSUPPORTED_EDIT.value
+                last_attempt.stop_reason = validation.final_stop_reason
+                return self._stage_provisional(finding, validation, last_attempt)
+            current_repair_record.prior_script_ref = current_poc.script_path
+            current_repair_record.prior_script_hash = current_poc.script_hash or sha256_text(
+                Path(current_poc.script_path).read_text(encoding="utf-8")
+            )
+            current_repair_record.assembled_script_ref = assembled.script_path
+            current_repair_record.edit_ref = assembled.normalized_edit_ref
+            current_repair_record.script_hash = assembled.script_hash
+            current_repair_record.edit_hash = assembled.normalized_edit_hash
+            persist_gate_record(current_repair_record, next_dir / "repair-record-assembled.json")
+            all_artifacts.extend(
+                _dedupe(
+                    [
+                        current_repair_record.metadata_path,
+                        assembled.metadata_path,
+                        assembled.script_path,
+                        assembled.normalized_edit_ref,
+                    ]
+                )
+            )
+            timeline.append(
+                {
+                    "stage": "trusted-assembly",
+                    "attempt_index": next_attempt,
+                    "status": "assembled",
+                    "edit_hash": assembled.normalized_edit_hash,
+                    "script_hash": assembled.script_hash,
+                    "changes": current_repair_record.changes,
+                    "artifact_ref": current_repair_record.metadata_path,
+                }
+            )
+            self._publish(
+                "poc.repair.assembled",
+                finding.id or "",
+                next_attempt,
+                {"edit_hash": assembled.normalized_edit_hash, "script_hash": assembled.script_hash},
+                [current_repair_record.metadata_path or "", assembled.metadata_path or ""],
+            )
+            if assembled.script_hash in seen_script_hashes:
+                current_repair_record.stop_reason = RepairStopReason.DUPLICATE_SCRIPT
+                current_repair_record.status = "duplicate-script"
+                persist_gate_record(current_repair_record, next_dir / "repair-record-duplicate-script.json")
+                validation.final_stop_reason = RepairStopReason.DUPLICATE_SCRIPT.value
+                last_attempt.stop_reason = validation.final_stop_reason
+                self._publish(
+                    "poc.repair.duplicate",
+                    finding.id or "",
+                    next_attempt,
+                    {"kind": "script", "hash": assembled.script_hash},
+                    [current_repair_record.metadata_path or ""],
+                )
+                return self._stage_provisional(finding, validation, last_attempt)
+            seen_script_hashes.add(assembled.script_hash)
+            current_poc = assembled
+
+        if last_attempt is None:
+            return self._manual_required(finding, selected, "PoC validation did not produce an attempt.")
+        validation.final_stop_reason = RepairStopReason.BUDGET_EXHAUSTED.value
+        return self._stage_provisional(finding, validation, last_attempt)
+
+    def _ensure_before_manifest(self, metadata: RepositoryMetadata) -> None:
+        if self._before_manifest is not None or not metadata.root_path:
+            return
+        self._before_manifest = build_target_manifest(metadata.root_path, "before-validation")
+        persist_gate_record(
+            self._before_manifest,
+            self.run_dir / "verification" / "target-manifest-before.json",
+        )
+
+    def _stage_provisional(
+        self,
+        finding: Finding,
+        validation: ValidationResult,
+        last_attempt: VerificationAttempt | None,
+    ) -> ValidationResult:
+        provisional = validation.provisional_status or validation.verification_status or validation.status
+        validation.provisional_status = provisional
+        validation.final_status = None
+        self._pending_attempts[finding.id or validation.finding_id] = last_attempt
+        return validation
+
+    def finalize_validation_phase(
+        self,
+        metadata: RepositoryMetadata,
+        staged: list[tuple[Finding, ValidationResult]],
+    ) -> list[ValidationResult]:
+        """Apply one target-integrity decision to every provisional finding result."""
+        if not self._validation_phase_active:
+            raise RuntimeError("begin_validation_phase() must be called before finalization.")
+        comparison = None
+        integrity_summary: dict[str, Any] = {}
+        self.integrity_artifact_refs = []
+        if self._before_manifest is not None and metadata.root_path:
+            after = build_target_manifest(metadata.root_path, "after-validation")
+            persist_gate_record(after, self.run_dir / "verification" / "target-manifest-after.json")
+            comparison = compare_target_manifests(self._before_manifest, after)
+            persist_gate_record(
+                comparison,
+                self.run_dir / "verification" / "target-integrity-comparison.json",
+            )
+            self.integrity_artifact_refs = _dedupe(
+                [
+                    self._before_manifest.metadata_path,
+                    after.metadata_path,
+                    comparison.metadata_path,
+                ]
+            )
+            integrity_summary = {
+                "unchanged": comparison.unchanged,
+                "before_ref": self._before_manifest.metadata_path,
+                "after_ref": after.metadata_path,
+                "comparison_ref": comparison.metadata_path,
+                "changed_count": len(comparison.changed_files),
+                "added_count": len(comparison.added_files),
+                "removed_count": len(comparison.removed_files),
+                "changed_files": comparison.changed_files,
+                "added_files": comparison.added_files,
+                "removed_files": comparison.removed_files,
+            }
+            self._publish(
+                "poc.target-integrity",
+                "run",
+                0,
+                {
+                    **integrity_summary,
+                    "finding_ids": [finding.id or validation.finding_id for finding, validation in staged],
+                    "provisional_confirmation_count": sum(
+                        1
+                        for _finding, validation in staged
+                        if validation.provisional_status == VerificationStatus.CONFIRMED
+                    ),
+                },
+                [comparison.metadata_path or ""],
+            )
+
+        finalized: list[ValidationResult] = []
+        for finding, validation in staged:
+            provisional = validation.provisional_status or validation.verification_status or validation.status
+            validation.provisional_status = provisional
+            if comparison is not None:
+                validation.artifacts = _dedupe([*validation.artifacts, *self.integrity_artifact_refs])
+                validation.integrity_summary = dict(integrity_summary)
+                if not comparison.unchanged:
+                    validation.final_stop_reason = RepairStopReason.TARGET_INTEGRITY_CHANGED.value
+                    if provisional == VerificationStatus.CONFIRMED:
+                        validation.status = VerificationStatus.MANUAL_REQUIRED
+                        validation.verification_status = VerificationStatus.MANUAL_REQUIRED
+                        validation.verification_reason = (
+                            "Target integrity changed during validation; provisional confirmation was downgraded."
+                        )
+                        validation.message = validation.verification_reason
+                    elif provisional == VerificationStatus.REJECTED:
+                        validation.verification_reason = (
+                            validation.verification_reason
+                            + " Target integrity changed during validation; contradiction evidence was retained with a warning."
+                        ).strip()
+                        validation.message = validation.verification_reason
+
+            last_attempt = self._pending_attempts.get(finding.id or validation.finding_id)
+            if last_attempt is not None:
+                last_attempt.integrity_comparison_ref = comparison.metadata_path if comparison is not None else None
+                last_attempt.final_status = validation.verification_status or validation.status
+                if validation.final_stop_reason:
+                    last_attempt.stop_reason = validation.final_stop_reason
+                finalization_ref = persist_gate_record(
+                    last_attempt,
+                    _attempt_dir(self.run_dir, finding.id or "unknown", last_attempt.attempt_index)
+                    / "verification-attempt-final.json",
+                )
+                validation.attempt_refs = _dedupe([*validation.attempt_refs, finalization_ref])
+                validation.artifacts = _dedupe([*validation.artifacts, finalization_ref])
+
+            validation.final_status = validation.verification_status or validation.status
+            finalized.append(self._finalize(finding, validation))
+
+        self._pending_attempts.clear()
+        self._validation_phase_active = False
+        return finalized
+
+    def _manual_required(self, finding: Finding, level: str, reason: str) -> ValidationResult:
+        return self._stage_provisional(
+            finding,
+            ValidationResult(
+                finding_id=finding.id or "",
+                level=level,
+                status=VerificationStatus.MANUAL_REQUIRED,
+                verification_status=VerificationStatus.MANUAL_REQUIRED,
+                verification_reason=reason,
+                message=reason,
+                artifacts=_local_evidence_refs(finding),
+            ),
+            None,
+        )
+
+    def _likely(self, finding: Finding, level: str, reason: str) -> ValidationResult:
+        return self._stage_provisional(
+            finding,
+            ValidationResult(
+                finding_id=finding.id or "",
+                level=level,
+                status=VerificationStatus.LIKELY,
+                verification_status=VerificationStatus.LIKELY,
+                verification_reason=reason,
+                message=reason,
+                artifacts=_local_evidence_refs(finding),
+            ),
+            None,
+        )
+
+    def _persist_repair_attempt(
+        self,
+        finding: Finding,
+        attempt_index: int,
+        poc: PoCArtifact,
+        sandbox_result: SandboxRunResult | None,
+        judge: JudgeOutcome,
+        classification: PoCFailureClassification | None,
+        repair_record: PoCRepairRecord | None,
+        semantic: PoCSemanticIntegrityDecision | None,
+        safety: PoCSafetyDecision | None,
+        stop_reason: RepairStopReason | None,
+    ) -> VerificationAttempt:
+        attempt = VerificationAttempt(
+            finding_id=finding.id or "",
+            attempt_index=attempt_index,
+            status=judge.status,
+            reason=judge.reason,
+            poc_ref=poc.metadata_path,
+            sandbox_result_ref=sandbox_result.metadata_path if sandbox_result else None,
+            stdout_ref=sandbox_result.stdout_ref if sandbox_result else None,
+            stderr_ref=sandbox_result.stderr_ref if sandbox_result else None,
+            exit_code=sandbox_result.exit_code if sandbox_result else None,
+            judge_reason=judge.reason,
+            repair_reason=repair_record.diagnosis if repair_record else "",
+            blocking_reason=judge.reason if judge.status == VerificationStatus.MANUAL_REQUIRED else "",
+            evidence_refs=judge.evidence_refs,
+            failure_classification_ref=classification.metadata_path if classification else None,
+            repair_record_ref=repair_record.metadata_path if repair_record else None,
+            semantic_integrity_ref=semantic.metadata_path if semantic else None,
+            safety_decision_ref=safety.metadata_path if safety else None,
+            normalized_edit_hash=poc.normalized_edit_hash,
+            prior_script_hash=repair_record.prior_script_hash if repair_record else "",
+            script_hash=poc.script_hash,
+            provisional_status=judge.status,
+            stop_reason=stop_reason.value if stop_reason else "",
+        )
+        attempt_path = immutable_path(
+            _attempt_dir(self.run_dir, finding.id or "unknown", attempt_index) / "verification-attempt.json"
+        )
+        attempt.metadata_path = str(attempt_path)
+        attempt_path.write_text(json.dumps(attempt.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return attempt
+
+    def _validation_from_repair_state(
+        self,
+        finding: Finding,
+        level: str,
+        poc: PoCArtifact,
+        sandbox_result: SandboxRunResult | None,
+        judge: JudgeOutcome,
+        attempt: VerificationAttempt,
+        poc_refs: list[str],
+        sandbox_refs: list[str],
+        attempt_refs: list[str],
+        artifacts: list[str],
+        classifications: list[PoCFailureClassification],
+        timeline: list[dict[str, Any]],
+        semantic: PoCSemanticIntegrityDecision | None,
+        safety: PoCSafetyDecision | None,
+        stop_reason: RepairStopReason | None,
+    ) -> ValidationResult:
+        environment = sandbox_result.environment if sandbox_result else {}
+        return ValidationResult(
+            finding_id=finding.id or "",
+            level=level,
+            status=judge.status,
+            verification_status=judge.status,
+            verification_reason=judge.reason,
+            judge_reason=judge.reason,
+            exit_code=sandbox_result.exit_code if sandbox_result else None,
+            timed_out=sandbox_result.timed_out if sandbox_result else False,
+            stdout_preview=sandbox_result.stdout_preview if sandbox_result else "",
+            stderr_preview=sandbox_result.stderr_preview if sandbox_result else "",
+            poc_refs=_dedupe([*poc_refs, poc.metadata_path, poc.script_path]),
+            sandbox_result_refs=_dedupe(sandbox_refs),
+            attempt_refs=_dedupe(attempt_refs),
+            command_argv=list(sandbox_result.argv) if sandbox_result else list(poc.command_argv),
+            command=" ".join(sandbox_result.argv if sandbox_result else poc.command_argv),
+            environment=environment,
+            artifacts=_dedupe(
+                [
+                    *artifacts,
+                    *poc_refs,
+                    *sandbox_refs,
+                    *attempt_refs,
+                    poc.repair_manifest_ref,
+                    poc.immutable_envelope_ref,
+                    poc.normalized_edit_ref,
+                ]
+            ),
+            repair_attempt_count=max(0, attempt.attempt_index - 1),
+            classifications=[item.to_dict() for item in classifications],
+            repair_timeline=list(timeline),
+            semantic_integrity_status=("allowed" if semantic and semantic.allowed else "denied" if semantic else "not-applicable"),
+            safety_status="allowed" if safety and safety.allowed else "denied" if safety else "not-evaluated",
+            provisional_status=judge.status,
+            final_stop_reason=stop_reason.value if stop_reason else "",
+            message=judge.reason,
+        )
+
+    def _publish(
+        self,
+        message_type: str,
+        finding_id: str,
+        attempt_index: int,
+        payload: dict[str, Any],
+        refs: list[str],
+    ) -> None:
+        if self.message_bus is None:
+            return
+        self.message_bus.publish(
+            "validation",
+            "verification",
+            message_type,
+            {"finding_id": finding_id, "attempt_index": attempt_index, **payload},
+            artifact_refs=[ref for ref in refs if ref],
+        )
+
+
 def verification_status_counts(items: list[Any]) -> dict[str, int]:
     counts = {
         "confirmed_count": 0,
@@ -1210,16 +2113,20 @@ def _persist_sandbox_result(result: SandboxRunResult, attempt_dir: Path) -> Sand
 
 def _path_traversal_script(plan: dict[str, str], repair_context: dict[str, Any] | None = None) -> str:
     lines = [
+            IMPORT_SLOT_BEGIN,
             "from pathlib import Path",
             "import os",
+            IMPORT_SLOT_END,
             "",
             f"# target sink expression: {plan['sink_expression']}",
             f"# target path expression: {plan['path_expression']}",
+            SETUP_SLOT_BEGIN,
             "attempt = Path.cwd()",
             "intended_root = attempt / 'target_base' / 'files'",
             "intended_root.mkdir(parents=True, exist_ok=True)",
             "outside = intended_root.parent / 'outside-secret.txt'",
             "outside.write_text('sandbox sentinel', encoding='utf-8')",
+            SETUP_SLOT_END,
             "_payload = '../outside-secret.txt'",
             "_safe_prefix = str(intended_root) + os.sep",
             f"{plan['source_symbol']} = _payload",
@@ -1268,9 +2175,11 @@ def _sqli_script(plan: dict[str, Any], repair_context: dict[str, Any] | None = N
             "attack_rows = _fetch_rows(cursor, attack_query, (ATTACK_PAYLOAD,))",
         ]
     lines = [
+        IMPORT_SLOT_BEGIN,
         "import json",
         "import sqlite3",
         "from pathlib import Path",
+        IMPORT_SLOT_END,
         "",
         "BASELINE_VALUE = 'alice'",
         "ATTACK_PAYLOAD = \"' OR '1'='1\"",
@@ -1299,9 +2208,11 @@ def _sqli_script(plan: dict[str, Any], repair_context: dict[str, Any] | None = N
         *source_assignments,
         f"    return {plan['query_expression']}",
         "",
+        SETUP_SLOT_BEGIN,
         "connection = sqlite3.connect(':memory:')",
         "cursor = connection.cursor()",
         "_seed(cursor)",
+        SETUP_SLOT_END,
         *execution_lines,
         "marker_seen = any(str(value) == 'marker' for row in attack_rows for value in row)",
         "baseline_count = len(baseline_rows)",
@@ -1663,3 +2574,9 @@ def _dedupe(values: list[Any]) -> list[str]:
         if text not in result:
             result.append(text)
     return result
+
+
+def _runner_secret_values(config: AuditConfig) -> list[str]:
+    env_name = str(getattr(config.llm, "api_key_env", "") or "")
+    value = os.environ.get(env_name) if env_name else None
+    return [value] if value else []

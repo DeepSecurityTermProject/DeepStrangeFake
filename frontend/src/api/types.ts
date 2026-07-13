@@ -19,6 +19,8 @@ export interface ScanRunRequest {
   sandbox_docker_image?: string;
   sandbox_docker_context?: string;
   sandbox_docker_host?: string;
+  llm_poc_repair?: boolean;
+  max_repair_attempts?: number;
   include_patterns?: string[];
   exclude_patterns?: string[];
   output?: string;
@@ -57,6 +59,11 @@ export interface ApiOptions {
   default_docker_image: string;
   default_docker_context: string;
   default_docker_host: string;
+  llm_poc_repair_default?: boolean;
+  max_repair_attempts_default?: number;
+  max_repair_attempts_range?: [number, number] | number[];
+  poc_repair_effective_source?: string;
+  poc_repair_requires_docker?: boolean;
   default_exclude_patterns: string[];
 }
 
@@ -80,6 +87,7 @@ export interface ReplaySummary {
   message_count?: number;
   decision_lifecycle?: Record<string, unknown>;
   runtime_lifecycle?: Record<string, unknown>;
+  repair_lifecycle?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -95,6 +103,16 @@ export interface ReportFinding {
   verification_status?: string;
   verification_reason?: string;
   validation?: Record<string, unknown>;
+  repair_summary?: {
+    attempt_count?: number;
+    classifications?: Array<Record<string, unknown>>;
+    semantic_integrity_status?: string;
+    safety_status?: string;
+    provisional_status?: string;
+    final_status?: string;
+    integrity?: Record<string, unknown>;
+    final_stop_reason?: string;
+  };
   [key: string]: unknown;
 }
 

@@ -77,6 +77,26 @@ class ReportGenerator:
         item["agent_traces"] = chain.agent_traces if chain else []
         item["handoffs"] = chain.handoffs if chain else []
         item["validation"] = chain.validation if chain else finding.metadata.get("validation_summary", {})
+        validation = item["validation"]
+        item["repair_summary"] = {
+            "attempt_count": validation.get("repair_attempt_count", 0),
+            "classifications": [
+                {
+                    "attempt_index": entry.get("attempt_index"),
+                    "failure_class": entry.get("failure_class"),
+                    "eligible": entry.get("eligible"),
+                    "reason": entry.get("reason"),
+                }
+                for entry in validation.get("classifications", [])
+            ],
+            "timeline": validation.get("repair_timeline", []),
+            "semantic_integrity_status": validation.get("semantic_integrity_status", ""),
+            "safety_status": validation.get("safety_status", ""),
+            "provisional_status": validation.get("provisional_status"),
+            "final_status": validation.get("final_status"),
+            "integrity": validation.get("integrity_summary", {}),
+            "final_stop_reason": validation.get("final_stop_reason", ""),
+        }
         item["verification_status"] = _verification_status(finding, item["validation"])
         item["verification_reason"] = (
             finding.verification_reason
@@ -160,6 +180,41 @@ class ReportGenerator:
                 lines.append(f"- Timed out: {validation.get('timed_out')}")
             if validation.get("judge_reason"):
                 lines.append(f"- Judge reason: {validation.get('judge_reason')}")
+            if validation.get("repair_attempt_count") is not None:
+                lines.append(f"- Repair attempts: {validation.get('repair_attempt_count', 0)}")
+            if validation.get("semantic_integrity_status"):
+                lines.append(f"- Semantic integrity: {validation.get('semantic_integrity_status')}")
+            if validation.get("safety_status"):
+                lines.append(f"- Safety gate: {validation.get('safety_status')}")
+            if validation.get("provisional_status"):
+                lines.append(f"- Provisional status: {validation.get('provisional_status')}")
+            if validation.get("final_status"):
+                lines.append(f"- Final status: {validation.get('final_status')}")
+            if validation.get("final_stop_reason"):
+                lines.append(f"- Repair stop reason: {validation.get('final_stop_reason')}")
+            integrity = validation.get("integrity_summary") or {}
+            if integrity:
+                lines.append(
+                    "- Target integrity: "
+                    + ("unchanged" if integrity.get("unchanged") else "changed")
+                    + f" (changed={integrity.get('changed_count', 0)}, added={integrity.get('added_count', 0)}, removed={integrity.get('removed_count', 0)})"
+                )
+            repair_timeline = validation.get("repair_timeline") or []
+            if repair_timeline:
+                lines.extend(["", "#### PoC Repair Timeline"])
+                for event in repair_timeline:
+                    details = [
+                        f"attempt={event.get('attempt_index', '?')}",
+                        f"stage={event.get('stage', 'unknown')}",
+                        f"status={event.get('status', 'unknown')}",
+                    ]
+                    if event.get("edit_hash"):
+                        details.append(f"edit_hash={event.get('edit_hash')}")
+                    if event.get("script_hash"):
+                        details.append(f"script_hash={event.get('script_hash')}")
+                    if event.get("rule_ids"):
+                        details.append("rules=" + ",".join(event.get("rule_ids") or []))
+                    lines.append("- " + "; ".join(details))
             if validation.get("stdout_preview") is not None:
                 lines.append(f"- stdout: {validation.get('stdout_preview')}")
             if validation.get("stderr_preview") is not None:

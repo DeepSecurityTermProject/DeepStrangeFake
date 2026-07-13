@@ -100,6 +100,11 @@
     "allow_live_target_actions": false,
     "decision_artifact_dir": "decisions"
   },
+  "poc_repair": {
+    "enabled": false,
+    "max_repair_attempts": 1,
+    "effective_source": "default"
+  },
   "audit_scope": {
     "vulnerability_classes": [
       "sql-injection",

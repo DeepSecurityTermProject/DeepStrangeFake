@@ -110,6 +110,15 @@ describe("RunDetailTabs", () => {
                 sandbox_result_refs: ["runs/run-1/verification/F-path/result.json"],
                 stdout_preview: "PATH_TRAVERSAL_CONFIRMED",
                 stderr_preview: ""
+              },
+              repair_summary: {
+                attempt_count: 1,
+                classifications: [{ attempt_index: 1, failure_class: "harness-error" }],
+                semantic_integrity_status: "allowed",
+                safety_status: "allowed",
+                final_status: "confirmed",
+                integrity: { unchanged: true },
+                final_stop_reason: "terminal-outcome"
               }
             },
             {
@@ -135,6 +144,9 @@ describe("RunDetailTabs", () => {
     expect(screen.getAllByText(/^docker$/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/python:3.12-slim/i)).toBeInTheDocument();
     expect(screen.getByText(/PATH_TRAVERSAL_CONFIRMED/i)).toBeInTheDocument();
+    expect(screen.getByText(/harness-error@1/i)).toBeInTheDocument();
+    expect(screen.getByText(/^unchanged$/i)).toBeInTheDocument();
+    expect(screen.getByText(/terminal-outcome/i)).toBeInTheDocument();
     expect(screen.getByText(/unsupported vulnerability class/i)).toBeInTheDocument();
   });
 });

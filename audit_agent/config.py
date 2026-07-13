@@ -147,6 +147,23 @@ class LlmDecisionRuntimeConfig:
 
 
 @dataclass
+class PoCRepairConfig:
+    enabled: bool = False
+    max_repair_attempts: int = 1
+    effective_source: str = "default"
+
+    def __post_init__(self) -> None:
+        if isinstance(self.max_repair_attempts, bool) or not isinstance(self.max_repair_attempts, int):
+            raise ValueError("poc_repair.max_repair_attempts must be an integer in 0..2")
+        if not 0 <= self.max_repair_attempts <= 2:
+            raise ValueError("poc_repair.max_repair_attempts must be in 0..2")
+
+    @property
+    def total_execution_attempts(self) -> int:
+        return 1 + self.max_repair_attempts
+
+
+@dataclass
 class AuditScope:
     vulnerability_classes: list[str] = field(
         default_factory=lambda: [
@@ -208,6 +225,7 @@ class AuditConfig:
     memory: MemoryRuntimeConfig = field(default_factory=MemoryRuntimeConfig)
     message_bus: MessageBusConfig = field(default_factory=MessageBusConfig)
     llm_decisions: LlmDecisionRuntimeConfig = field(default_factory=LlmDecisionRuntimeConfig)
+    poc_repair: PoCRepairConfig = field(default_factory=PoCRepairConfig)
     audit_scope: AuditScope = field(default_factory=AuditScope)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     tool_permissions: ToolPermissions = field(default_factory=ToolPermissions)
@@ -225,6 +243,21 @@ class AuditConfig:
     @classmethod
     def from_json(cls, path: str | Path) -> "AuditConfig":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        llm_decisions = LlmDecisionRuntimeConfig(
+            **_known_kwargs(LlmDecisionRuntimeConfig, data.get("llm_decisions", {}))
+        )
+        if "poc_repair" in data:
+            repair_values = _known_kwargs(PoCRepairConfig, data.get("poc_repair", {}))
+            repair_values["effective_source"] = "explicit"
+            poc_repair = PoCRepairConfig(**repair_values)
+        elif llm_decisions.enabled and llm_decisions.repair_enabled:
+            poc_repair = PoCRepairConfig(
+                enabled=True,
+                max_repair_attempts=llm_decisions.max_repair_attempts,
+                effective_source="legacy",
+            )
+        else:
+            poc_repair = PoCRepairConfig(effective_source="default")
         return cls(
             llm=LlmConfig(**_known_kwargs(LlmConfig, data.get("llm", {}))),
             prompts=PromptRuntimeConfig(**_known_kwargs(PromptRuntimeConfig, data.get("prompts", {}))),
@@ -234,9 +267,8 @@ class AuditConfig:
             tools=ToolRuntimeConfig(**_known_kwargs(ToolRuntimeConfig, data.get("tools", {}))),
             memory=MemoryRuntimeConfig(**_known_kwargs(MemoryRuntimeConfig, data.get("memory", {}))),
             message_bus=MessageBusConfig(**_known_kwargs(MessageBusConfig, data.get("message_bus", {}))),
-            llm_decisions=LlmDecisionRuntimeConfig(
-                **_known_kwargs(LlmDecisionRuntimeConfig, data.get("llm_decisions", {}))
-            ),
+            llm_decisions=llm_decisions,
+            poc_repair=poc_repair,
             audit_scope=AuditScope(**_known_kwargs(AuditScope, data.get("audit_scope", {}))),
             sandbox=SandboxConfig(**_known_kwargs(SandboxConfig, data.get("sandbox", {}))),
             tool_permissions=ToolPermissions(**_known_kwargs(ToolPermissions, data.get("tool_permissions", {}))),
@@ -250,6 +282,27 @@ class AuditConfig:
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
+
+    def validate_poc_repair_prerequisites(self) -> None:
+        self.poc_repair.__post_init__()
+        if not self.poc_repair.enabled:
+            return
+        if not self.sandbox.enabled:
+            raise ValueError("LLM PoC repair requires sandbox execution to be enabled")
+        if self.default_validation_level != "sandbox":
+            raise ValueError("LLM PoC repair requires sandbox validation level")
+        if str(self.sandbox.runner).lower() != "docker":
+            raise ValueError("LLM PoC repair requires the Docker sandbox runner")
+        if not self.runtime_enabled:
+            raise ValueError("LLM PoC repair requires runtime LLM client configuration")
+        if self.llm.provider not in {
+            "mock",
+            "openai-compatible",
+            "openai",
+            "deepseek-compatible",
+            "ollama-compatible",
+        }:
+            raise ValueError("LLM PoC repair requires a configured mock or real provider")
 
 
 def _known_kwargs(cls, values: dict[str, Any]) -> dict[str, Any]:

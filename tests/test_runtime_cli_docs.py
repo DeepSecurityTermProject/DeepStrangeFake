@@ -39,6 +39,11 @@ class RuntimeCliDocsTests(unittest.TestCase):
                 "desktop-linux",
                 "--sandbox-docker-host",
                 "npipe:////./pipe/dockerDesktopLinuxEngine",
+                "--validation-level",
+                "sandbox",
+                "--llm-poc-repair",
+                "--max-repair-attempts",
+                "2",
                 "--include",
                 "src/**",
                 "--exclude",
@@ -57,6 +62,8 @@ class RuntimeCliDocsTests(unittest.TestCase):
         self.assertEqual(args.sandbox_docker_image, "python:3.12-slim")
         self.assertEqual(args.sandbox_docker_context, "desktop-linux")
         self.assertEqual(args.sandbox_docker_host, "npipe:////./pipe/dockerDesktopLinuxEngine")
+        self.assertTrue(args.llm_poc_repair)
+        self.assertEqual(args.max_repair_attempts, 2)
         self.assertEqual(args.include, ["src/**"])
         self.assertEqual(args.exclude, ["legacy/**"])
 
@@ -68,6 +75,10 @@ class RuntimeCliDocsTests(unittest.TestCase):
         self.assertEqual(config.sandbox.docker_image, "python:3.12-slim")
         self.assertEqual(config.sandbox.docker_context, "desktop-linux")
         self.assertEqual(config.sandbox.docker_host, "npipe:////./pipe/dockerDesktopLinuxEngine")
+        self.assertTrue(config.poc_repair.enabled)
+        self.assertEqual(config.poc_repair.max_repair_attempts, 2)
+        self.assertEqual(config.poc_repair.effective_source, "explicit")
+        config.validate_poc_repair_prerequisites()
         self.assertIn("src/**", config.audit_scope.include_patterns)
         self.assertIn("legacy/**", config.audit_scope.exclude_patterns)
 

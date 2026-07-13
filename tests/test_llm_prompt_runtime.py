@@ -16,7 +16,13 @@ from audit_agent.llm import (
     validate_json_schema,
 )
 from audit_agent.models import LLMRequest
-from audit_agent.prompts import PromptRegistry, PromptTemplate, render_default_prompt
+from audit_agent.prompts import (
+    POC_REPAIR_RESPONSE_SCHEMA,
+    PromptRegistry,
+    PromptTemplate,
+    default_prompt_registry,
+    render_default_prompt,
+)
 
 
 class LlmPromptRuntimeTests(unittest.TestCase):
@@ -94,6 +100,36 @@ class LlmPromptRuntimeTests(unittest.TestCase):
         self.assertIn("intelligence-only", first.rendered.lower())
         json.dumps(first.to_dict())
 
+    def test_poc_repair_prompt_exposes_nested_schema_and_minimal_valid_example(self):
+        record = default_prompt_registry().render(
+            "poc-repair.edits",
+            "v1",
+            {
+                "prior_script": "print(Path.cwd())",
+                "repair_manifest": {"editable_slots": [{"slot_id": "imports", "operations": ["add_import"]}]},
+                "diagnostics": "NameError: Path is not defined",
+                "dataflow_context": "synthetic",
+                "source_sink_snippets": "synthetic",
+                "missing_evidence": "marker absent",
+                "attempt_index": 2,
+                "remaining_budget": 0,
+            },
+        )
+
+        edit_schema = record.output_schema["properties"]["edits"]
+        self.assertEqual(3, len(edit_schema["items"]["oneOf"]))
+        self.assertEqual(["add_import"], edit_schema["items"]["oneOf"][0]["properties"]["op"]["enum"])
+        self.assertEqual("string", record.output_schema["properties"]["changes"]["items"]["type"])
+        self.assertIn('"op":"add_import"', record.rendered)
+        self.assertIn('"module":"pathlib"', record.rendered)
+        self.assertIn('"changes":[', record.rendered)
+        fixture = json.loads(
+            (Path(__file__).resolve().parents[1] / "audit_agent" / "prompt_templates" / "poc-repair.edits.v1.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual(POC_REPAIR_RESPONSE_SCHEMA, fixture["response"])
+        self.assertEqual("add_import", fixture["minimal_valid_response"]["edits"][0]["op"])
+
     def test_llm_artifacts_are_persisted(self):
         with tempfile.TemporaryDirectory() as tmp:
             client = MockLLMClient(responses={"recon": {"high_risk_areas": []}})
@@ -155,6 +191,87 @@ class LlmPromptRuntimeTests(unittest.TestCase):
         self.assertEqual(response.provider, "openai-compatible")
         self.assertEqual(response.parsed_json, {"candidates": []})
         self.assertEqual(response.usage["total_tokens"], 5)
+
+    def test_openai_compatible_provider_prefers_json_schema_then_falls_back_to_json_object(self):
+        request_bodies = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                body = {
+                    "model": "unit-model",
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "diagnosis": "Import Path.",
+                                        "edits": [
+                                            {
+                                                "op": "add_import",
+                                                "slot_id": "imports",
+                                                "module": "pathlib",
+                                                "name": "Path",
+                                            }
+                                        ],
+                                        "changes": ["Add Path import."],
+                                    }
+                                )
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                }
+                return json.dumps(body).encode("utf-8")
+
+        def fake_urlopen(request, timeout):
+            body = json.loads(request.data.decode("utf-8"))
+            request_bodies.append(body)
+            if len(request_bodies) == 1:
+                raise urllib.error.HTTPError(
+                    url=request.full_url,
+                    code=400,
+                    msg="json_schema unsupported",
+                    hdrs={},
+                    fp=None,
+                )
+            return FakeResponse()
+
+        env_name = "AUDIT_AGENT_TEST_STRUCTURED_OUTPUT_KEY"
+        os.environ[env_name] = "test-key"
+        try:
+            config = LlmConfig(
+                provider="openai-compatible",
+                model="unit-model",
+                base_url="http://example.test/v1",
+                api_key_env=env_name,
+                retry_count=0,
+            )
+            client = OpenAICompatibleClient(config)
+            request = LLMRequest(
+                role="poc-repair",
+                prompt="Return strict JSON.",
+                model="unit-model",
+                response_schema=POC_REPAIR_RESPONSE_SCHEMA,
+                response_format="auto",
+            )
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                response = client.complete(request)
+        finally:
+            os.environ.pop(env_name, None)
+
+        self.assertEqual(2, len(request_bodies))
+        first_format = request_bodies[0]["response_format"]
+        self.assertEqual("json_schema", first_format["type"])
+        self.assertTrue(first_format["json_schema"]["strict"])
+        self.assertEqual(POC_REPAIR_RESPONSE_SCHEMA, first_format["json_schema"]["schema"])
+        self.assertEqual({"type": "json_object"}, request_bodies[1]["response_format"])
+        self.assertEqual("add_import", response.parsed_json["edits"][0]["op"])
 
     def test_openai_compatible_provider_classifies_authentication_failure(self):
         env_name = "AUDIT_AGENT_TEST_OPENAI_KEY"

@@ -425,7 +425,7 @@ class DockerSandboxRunnerTests(unittest.TestCase):
 
             result = DockerSandboxRunner(config, run_dir).run(poc)
 
-            if result.status == "image-unavailable":
+            if result.status in {"environment-unavailable", "image-unavailable"}:
                 self.skipTest(result.message)
             self.assertEqual("docker", result.environment["runner"])
             self.assertEqual("completed", result.status)

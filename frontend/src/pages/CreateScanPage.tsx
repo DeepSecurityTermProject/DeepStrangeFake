@@ -15,6 +15,11 @@ const DEFAULT_OPTIONS: ApiOptions = {
   default_docker_image: "python:3.12-slim",
   default_docker_context: "",
   default_docker_host: "",
+  llm_poc_repair_default: false,
+  max_repair_attempts_default: 1,
+  max_repair_attempts_range: [0, 2],
+  poc_repair_effective_source: "default",
+  poc_repair_requires_docker: true,
   default_exclude_patterns: ["tests/**", "test/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"]
 };
 
@@ -41,6 +46,8 @@ export function CreateScanPage() {
   const [dockerImage, setDockerImage] = useState(DEFAULT_OPTIONS.default_docker_image);
   const [dockerContext, setDockerContext] = useState(DEFAULT_OPTIONS.default_docker_context);
   const [dockerHost, setDockerHost] = useState(DEFAULT_OPTIONS.default_docker_host);
+  const [llmPoCRepair, setLlmPoCRepair] = useState(false);
+  const [maxRepairAttempts, setMaxRepairAttempts] = useState(1);
   const [includePatterns, setIncludePatterns] = useState("");
   const [excludePatterns, setExcludePatterns] = useState(DEFAULT_OPTIONS.default_exclude_patterns.join("\n"));
   const [targetError, setTargetError] = useState("");
@@ -85,6 +92,8 @@ export function CreateScanPage() {
       validation_level: validationLevel,
       sandbox_enabled: sandboxEnabled,
       sandbox_runner: sandboxRunner,
+      llm_poc_repair: llmPoCRepair,
+      max_repair_attempts: maxRepairAttempts,
       ...(sandboxRunner === "docker"
         ? {
             sandbox_docker_image: selectedDockerImage,
@@ -142,6 +151,24 @@ export function CreateScanPage() {
             />
             <span>Sandbox execution</span>
           </label>
+          <label className="check-row">
+            <input
+              id="llm-poc-repair"
+              type="checkbox"
+              checked={llmPoCRepair}
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                setLlmPoCRepair(enabled);
+                if (enabled) {
+                  setRuntime(true);
+                  setValidationLevel("sandbox");
+                  setSandboxEnabled(true);
+                  setSandboxRunner("docker");
+                }
+              }}
+            />
+            <span>LLM PoC repair</span>
+          </label>
         </div>
 
         <fieldset className="segmented-field">
@@ -197,6 +224,8 @@ export function CreateScanPage() {
                 setValidationLevel(next);
                 if (next === "sandbox") {
                   setSandboxEnabled(true);
+                } else {
+                  setLlmPoCRepair(false);
                 }
               }}
             >
@@ -210,7 +239,16 @@ export function CreateScanPage() {
           {sandboxEnabled && (
             <label className="field">
               <span>Sandbox runner</span>
-              <select value={sandboxRunner} onChange={(event) => setSandboxRunner(event.target.value as SandboxRunner)}>
+              <select
+                value={sandboxRunner}
+                onChange={(event) => {
+                  const next = event.target.value as SandboxRunner;
+                  setSandboxRunner(next);
+                  if (next !== "docker") {
+                    setLlmPoCRepair(false);
+                  }
+                }}
+              >
                 {options.sandbox_runners.map((runner) => (
                   <option key={runner} value={runner}>
                     {runner}
@@ -223,6 +261,21 @@ export function CreateScanPage() {
             <label className="field">
               <span>Docker image</span>
               <input value={dockerImage} onChange={(event) => setDockerImage(event.target.value)} />
+            </label>
+          )}
+          {llmPoCRepair && validationLevel === "sandbox" && sandboxRunner === "docker" && (
+            <label className="field">
+              <span>Maximum repair attempts</span>
+              <select
+                value={maxRepairAttempts}
+                onChange={(event) => setMaxRepairAttempts(Number(event.target.value))}
+              >
+                {[0, 1, 2].map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
             </label>
           )}
           {sandboxEnabled && sandboxRunner === "docker" && (

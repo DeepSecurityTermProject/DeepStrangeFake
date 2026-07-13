@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ def stable_id(prefix: str, *parts: Any) -> str:
 
 
 def to_plain(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
     if is_dataclass(value):
         return {item.name: to_plain(getattr(value, item.name)) for item in fields(value)}
     if hasattr(value, "to_dict"):
@@ -264,6 +267,7 @@ class LLMRequest:
     temperature: float = 0.0
     max_tokens: int | None = None
     response_schema: dict[str, Any] = field(default_factory=dict)
+    response_format: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now)
     id: str | None = None
@@ -561,6 +565,236 @@ class VerificationDecision:
         return data
 
 
+class PoCFailureClass(str, Enum):
+    HARNESS_ERROR = "harness-error"
+    MISSING_EVIDENCE = "missing-evidence"
+    POLICY_DENIED = "policy-denied"
+    ENVIRONMENT_ERROR = "environment-error"
+    SEMANTIC_REJECTED = "semantic-rejected"
+    UNKNOWN = "unknown"
+
+
+class RepairStopReason(str, Enum):
+    DISABLED = "repair-disabled"
+    NO_CLIENT = "repair-client-unavailable"
+    REQUIRES_DOCKER = "llm-repair-requires-docker"
+    PROVIDER_FAILURE = "provider-failure"
+    INVALID_CONTRACT = "invalid-contract"
+    UNSUPPORTED_EDIT = "unsupported-edit"
+    UNSUPPORTED_MANIFEST = "unsupported-repair-manifest"
+    NON_REPAIRABLE = "failure-not-repairable"
+    DUPLICATE_EDIT = "duplicate-edit"
+    DUPLICATE_SCRIPT = "duplicate-script"
+    SEMANTIC_DENIED = "semantic-integrity-denied"
+    SAFETY_DENIED = "safety-denied"
+    BUDGET_EXHAUSTED = "repair-budget-exhausted"
+    TARGET_INTEGRITY_CHANGED = "target-integrity-changed"
+    TERMINAL_OUTCOME = "terminal-outcome"
+
+
+@dataclass
+class PoCEditableSlot:
+    slot_id: str
+    operations: list[str]
+    start_marker: str
+    end_marker: str
+    purpose: str = "setup"
+    allowed_values: list[str] = field(default_factory=list)
+    max_value_length: int = 2000
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class PoCProtectedNode:
+    node_id: str
+    node_type: str
+    ast_hash: str
+    category: str
+    source_location: dict[str, int] = field(default_factory=dict)
+    literals: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class PoCRepairManifest:
+    finding_id: str
+    generator_id: str
+    script_hash: str
+    editable_slots: list[PoCEditableSlot]
+    protected_nodes: list[PoCProtectedNode]
+    expected_markers: list[str] = field(default_factory=list)
+    protected_result_filenames: list[str] = field(default_factory=list)
+    manifest_version: str = "poc-repair-manifest.v1"
+    manifest_hash: str = ""
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id("PRM", self.finding_id, self.generator_id, self.script_hash)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class PoCNormalizedEdit:
+    op: str
+    slot_id: str
+    module: str | None = None
+    name: str | None = None
+    value: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {key: value for key, value in to_plain(self).items() if value is not None}
+
+
+@dataclass
+class PoCFailureClassification:
+    finding_id: str
+    attempt_index: int
+    failure_class: PoCFailureClass
+    eligible: bool
+    reason: str
+    stage: str
+    evidence_refs: list[str] = field(default_factory=list)
+    compatible_slot_ids: list[str] = field(default_factory=list)
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id(
+                "PFC", self.finding_id, self.attempt_index, self.failure_class.value, self.reason
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class PoCRepairRecord:
+    finding_id: str
+    attempt_index: int
+    status: str
+    diagnosis: str = ""
+    changes: list[str] = field(default_factory=list)
+    normalized_edits: list[PoCNormalizedEdit] = field(default_factory=list)
+    prompt_ref: str | None = None
+    response_ref: str | None = None
+    edit_ref: str | None = None
+    prior_script_ref: str | None = None
+    assembled_script_ref: str | None = None
+    prior_script_hash: str = ""
+    edit_hash: str = ""
+    script_hash: str = ""
+    manifest_ref: str | None = None
+    immutable_envelope_ref: str | None = None
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
+    validation_errors: list[str] = field(default_factory=list)
+    stop_reason: RepairStopReason | None = None
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id("PRR", self.finding_id, self.attempt_index, self.status, self.edit_hash)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class PoCSemanticIntegrityDecision:
+    finding_id: str
+    attempt_index: int
+    allowed: bool
+    script_hash: str
+    manifest_hash: str
+    rule_ids: list[str] = field(default_factory=list)
+    changed_protected_node_ids: list[str] = field(default_factory=list)
+    source_locations: list[dict[str, Any]] = field(default_factory=list)
+    reason: str = ""
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id("PSI", self.finding_id, self.attempt_index, self.script_hash, self.allowed)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class PoCSafetyDecision:
+    finding_id: str
+    attempt_index: int
+    allowed: bool
+    script_hash: str
+    rule_ids: list[str] = field(default_factory=list)
+    source_locations: list[dict[str, Any]] = field(default_factory=list)
+    reason: str = ""
+    repaired: bool = False
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id("PSD", self.finding_id, self.attempt_index, self.script_hash, self.allowed)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class TargetFileManifest:
+    root_path: str
+    phase: str
+    files: dict[str, str]
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id("TFM", self.root_path, self.phase, self.files)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
+@dataclass
+class TargetIntegrityComparison:
+    before_ref: str
+    after_ref: str
+    unchanged: bool
+    changed_files: list[str] = field(default_factory=list)
+    added_files: list[str] = field(default_factory=list)
+    removed_files: list[str] = field(default_factory=list)
+    metadata_path: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = stable_id(
+                "TIC", self.before_ref, self.after_ref, self.changed_files, self.added_files, self.removed_files
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain(self)
+
+
 @dataclass
 class PoCArtifact:
     finding_id: str
@@ -573,6 +807,16 @@ class PoCArtifact:
     source_refs: list[str] = field(default_factory=list)
     dataflow_trace_refs: list[str] = field(default_factory=list)
     target_file_refs: list[str] = field(default_factory=list)
+    repair_manifest_ref: str | None = None
+    repair_manifest_hash: str = ""
+    protected_node_hashes: dict[str, str] = field(default_factory=dict)
+    immutable_envelope_hash: str = ""
+    immutable_envelope_ref: str | None = None
+    original_poc_ref: str | None = None
+    normalized_edit_ref: str | None = None
+    normalized_edit_hash: str = ""
+    script_hash: str = ""
+    attempt_index: int = 1
     metadata_path: str | None = None
     created_at: str = field(default_factory=utc_now)
     id: str | None = None
@@ -640,6 +884,17 @@ class VerificationAttempt:
     repair_reason: str = ""
     blocking_reason: str = ""
     evidence_refs: list[str] = field(default_factory=list)
+    failure_classification_ref: str | None = None
+    repair_record_ref: str | None = None
+    semantic_integrity_ref: str | None = None
+    safety_decision_ref: str | None = None
+    normalized_edit_hash: str = ""
+    prior_script_hash: str = ""
+    script_hash: str = ""
+    provisional_status: str | None = None
+    final_status: str | None = None
+    integrity_comparison_ref: str | None = None
+    stop_reason: str = ""
     created_at: str = field(default_factory=utc_now)
     metadata_path: str | None = None
     id: str | None = None
@@ -671,6 +926,15 @@ class ValidationResult:
     attempt_refs: list[str] = field(default_factory=list)
     environment: dict[str, Any] = field(default_factory=dict)
     artifacts: list[str] = field(default_factory=list)
+    repair_attempt_count: int = 0
+    classifications: list[dict[str, Any]] = field(default_factory=list)
+    repair_timeline: list[dict[str, Any]] = field(default_factory=list)
+    semantic_integrity_status: str = ""
+    safety_status: str = ""
+    provisional_status: str | None = None
+    final_status: str | None = None
+    integrity_summary: dict[str, Any] = field(default_factory=dict)
+    final_stop_reason: str = ""
     message: str = ""
     timestamp: str = field(default_factory=utc_now)
 

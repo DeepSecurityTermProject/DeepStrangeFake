@@ -201,6 +201,12 @@ class SQLInjectionPoCGeneratorTests(unittest.TestCase):
             self.assertGreater(sqli_result["attack_count"], sqli_result["baseline_count"])
             self.assertTrue(sqli_result["marker_seen"])
             self.assertGreaterEqual(report["executive_summary"]["confirmed_count"], 1)
+            poc_payload = json.loads(Path(raw["validation"]["poc_refs"][0]).read_text(encoding="utf-8"))
+            manifest = json.loads(Path(poc_payload["repair_manifest_ref"]).read_text(encoding="utf-8"))
+            categories = {node["category"] for node in manifest["protected_nodes"]}
+            self.assertIn("measurement", categories)
+            self.assertIn("result-writer", categories)
+            self.assertEqual("sqli-result.json", manifest["protected_result_filenames"][0])
 
     def test_parameterized_sqli_fixture_runs_poc_and_reports_rejection_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:

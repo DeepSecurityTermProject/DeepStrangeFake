@@ -1,0 +1,86 @@
+{
+  "template_id": "poc-repair.edits",
+  "version": "v1",
+  "role": "poc-repair",
+  "contract": "poc-repair.edits.v1",
+  "required_variables": [
+    "prior_script",
+    "repair_manifest",
+    "diagnostics",
+    "dataflow_context",
+    "source_sink_snippets",
+    "missing_evidence",
+    "attempt_index",
+    "remaining_budget"
+  ],
+  "response": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["diagnosis", "edits", "changes"],
+    "properties": {
+      "diagnosis": {"type": "string", "minLength": 1, "maxLength": 2000},
+      "edits": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["op", "slot_id", "module", "name"],
+              "properties": {
+                "op": {"type": "string", "enum": ["add_import"]},
+                "slot_id": {"type": "string", "minLength": 1, "maxLength": 100},
+                "module": {"type": "string", "enum": ["json", "math", "os", "pathlib", "re", "sqlite3", "typing"]},
+                "name": {"type": "string", "minLength": 1, "maxLength": 100}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["op", "slot_id", "module"],
+              "properties": {
+                "op": {"type": "string", "enum": ["add_import"]},
+                "slot_id": {"type": "string", "minLength": 1, "maxLength": 100},
+                "module": {"type": "string", "enum": ["json", "math", "os", "pathlib", "re", "sqlite3", "typing"]}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["op", "slot_id", "value"],
+              "properties": {
+                "op": {"type": "string", "enum": ["replace_slot"]},
+                "slot_id": {"type": "string", "minLength": 1, "maxLength": 100},
+                "value": {"type": "string", "minLength": 1, "maxLength": 2000}
+              }
+            }
+          ]
+        }
+      },
+      "changes": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "items": {"type": "string", "minLength": 1, "maxLength": 500}
+      }
+    }
+  },
+  "minimal_valid_response": {
+    "diagnosis": "Import Path from pathlib.",
+    "edits": [
+      {"op": "add_import", "slot_id": "imports", "module": "pathlib", "name": "Path"}
+    ],
+    "changes": ["Add the declared Path import."]
+  },
+  "authority_exclusions": [
+    "script",
+    "command",
+    "expected_signal",
+    "result_filename",
+    "sandbox",
+    "retry_count",
+    "verdict"
+  ]
+}
