@@ -3,10 +3,12 @@ export type MemoryMode = "lexical" | "embedding" | "off";
 export type McpMode = "on" | "degraded" | "off";
 export type ValidationLevel = "static-only" | "poc-generate" | "sandbox" | "manual";
 export type SandboxRunner = "local" | "docker";
+export type GraphMode = "legacy" | "deterministic-graph" | "adaptive-graph";
 
 export interface ScanRunRequest {
   target: string;
   runtime?: boolean;
+  graph_mode?: GraphMode;
   llm_provider?: string;
   model?: string;
   llm_decisions?: boolean;
@@ -51,6 +53,8 @@ export interface JobListResponse {
 
 export interface ApiOptions {
   provider_modes: string[];
+  graph_modes: GraphMode[];
+  default_graph_mode: GraphMode;
   memory_modes: MemoryMode[];
   mcp_modes: McpMode[];
   validation_levels: ValidationLevel[];
@@ -75,10 +79,20 @@ export interface RuntimeTask {
   fallback_reason?: string;
   artifact_refs?: string[];
   message_refs?: string[];
+  graph_node_id?: string | null;
+  graph_revision?: number | null;
+  attempt?: number;
+  lineage?: Record<string, unknown>;
 }
 
 export interface RuntimeState {
   status?: string;
+  graph_mode?: GraphMode | string;
+  initial_graph_ref?: string | null;
+  final_graph_ref?: string | null;
+  checkpoint_counts?: Record<string, number>;
+  execution_path?: string[];
+  graph_fallback_reason?: string;
   tasks?: RuntimeTask[];
   [key: string]: unknown;
 }
@@ -120,5 +134,25 @@ export interface AuditReport {
   executive_summary?: Record<string, unknown>;
   findings?: ReportFinding[];
   verification_candidates?: ReportFinding[];
+  runtime?: {
+    graph?: GraphSummary;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
+}
+
+export interface GraphSummary {
+  mode?: GraphMode | string;
+  schema_version?: string;
+  template_id?: string;
+  template_version?: string;
+  revision?: number;
+  mutation_counts?: { committed?: number; denied?: number };
+  checkpoint_counts?: Record<string, number>;
+  checkpoint_total?: number;
+  replan_count?: number;
+  execution_path?: string[];
+  execution_path_summary?: Record<string, number>;
+  fallback_reason?: string;
+  artifact_refs?: Record<string, unknown>;
 }

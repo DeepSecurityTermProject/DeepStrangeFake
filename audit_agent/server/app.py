@@ -37,6 +37,8 @@ def create_app(
     def options():
         return {
             "provider_modes": ["mock", "openai-compatible"],
+            "graph_modes": ["legacy", "deterministic-graph", "adaptive-graph"],
+            "default_graph_mode": AuditConfig.default().graph.mode,
             "memory_modes": ["lexical", "embedding", "off"],
             "mcp_modes": ["on", "degraded", "off"],
             "validation_levels": ["static-only", "poc-generate", "sandbox", "manual"],

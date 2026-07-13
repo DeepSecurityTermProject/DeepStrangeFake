@@ -130,6 +130,23 @@ class LlmPromptRuntimeTests(unittest.TestCase):
         self.assertEqual(POC_REPAIR_RESPONSE_SCHEMA, fixture["response"])
         self.assertEqual("add_import", fixture["minimal_valid_response"]["edits"][0]["op"])
 
+    def test_graph_decision_prompt_has_closed_checkpoint_action_schema(self):
+        record = default_prompt_registry().render(
+            "orchestrator.graph-decision",
+            "v1",
+            {
+                "checkpoint_id": "post-recon",
+                "completed_stage": {"high_risk_areas": ["app.py"]},
+                "available_actions": ["gather-more-local-context", "refine-static-scan"],
+                "remaining_budgets": {"replans": 1, "checkpoints": 1},
+            },
+        )
+
+        action_schema = record.output_schema["properties"]["next_actions"]["items"]
+        self.assertEqual(action_schema["type"], "string")
+        self.assertIn("repeat-analysis", action_schema["enum"])
+        self.assertIn('"next_actions":["gather-more-local-context"]', record.rendered)
+
     def test_llm_artifacts_are_persisted(self):
         with tempfile.TemporaryDirectory() as tmp:
             client = MockLLMClient(responses={"recon": {"high_risk_areas": []}})

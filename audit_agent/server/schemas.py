@@ -9,6 +9,7 @@ MemoryMode = Literal["lexical", "embedding", "off"]
 McpMode = Literal["on", "off", "degraded"]
 ValidationLevel = Literal["static-only", "poc-generate", "sandbox", "manual"]
 SandboxRunner = Literal["local", "docker"]
+GraphMode = Literal["legacy", "deterministic-graph", "adaptive-graph"]
 
 
 class StrictModel(BaseModel):
@@ -18,6 +19,7 @@ class StrictModel(BaseModel):
 class ScanRunRequest(StrictModel):
     target: str = Field(min_length=1)
     runtime: bool = False
+    graph_mode: GraphMode | None = None
     llm_provider: str | None = None
     model: str | None = None
     llm_decisions: bool = False

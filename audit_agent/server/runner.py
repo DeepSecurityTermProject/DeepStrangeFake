@@ -17,6 +17,8 @@ RunAuditFunc = Callable[[str, AuditConfig, str | Path], dict]
 def build_audit_config(request: ScanRunRequest, cwd: str | Path | None = None) -> AuditConfig:
     config = AuditConfig.default()
     load_integration_environment(config, cwd=cwd)
+    if request.graph_mode:
+        config.graph.mode = request.graph_mode
     if request.validation_level:
         config.default_validation_level = request.validation_level
     config.sandbox.enabled = request.sandbox_enabled

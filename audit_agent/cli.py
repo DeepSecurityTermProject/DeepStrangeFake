@@ -35,6 +35,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--target", required=True, help="Local path, GitHub URL, or GitLab URL.")
     scan.add_argument("--output", default="runs", help="Run output directory.")
     scan.add_argument(
+        "--graph-mode",
+        choices=["legacy", "deterministic-graph", "adaptive-graph"],
+        default=None,
+        help="Execution mode. deterministic-graph is the default; legacy remains available for rollback.",
+    )
+    scan.add_argument(
         "--validation-level",
         choices=["static-only", "poc-generate", "sandbox", "manual"],
         default=None,
@@ -159,6 +165,16 @@ def build_parser() -> argparse.ArgumentParser:
     smoke = integration_subparsers.add_parser("smoke", help="Run a controlled live integration smoke audit.")
     _add_integration_flags(smoke)
     smoke.add_argument("--target", default=None, help="Small local target for the smoke audit.")
+
+    graph_smoke = subparsers.add_parser(
+        "graph-decision-smoke",
+        help="Run an opt-in bounded real-model adaptive graph decision smoke on a local fixture.",
+    )
+    graph_smoke.add_argument("--target", default="fixtures/integration_smoke")
+    graph_smoke.add_argument("--output", default="runs/graph-decision-smoke")
+    graph_smoke.add_argument("--provider", default=None)
+    graph_smoke.add_argument("--model", default=None)
+    graph_smoke.add_argument("--live", action="store_true")
     return parser
 
 
@@ -178,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
         result = run_audit(args.target, config, args.output)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
+    if args.command == "graph-decision-smoke":
+        return _run_graph_decision_smoke(config, args)
     if args.command == "benchmark":
         corpus_path = Path(args.benchmark_config) if args.benchmark_config else default_corpus_path()
         dimensions = args.comparison_dimension or ["engine"]
@@ -301,6 +319,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 def _apply_runtime_args(config: AuditConfig, args) -> None:
+    if getattr(args, "graph_mode", None):
+        config.graph.mode = args.graph_mode
     if getattr(args, "validation_level", None):
         config.default_validation_level = args.validation_level
     if getattr(args, "llm_decisions", False):
@@ -347,6 +367,63 @@ def _apply_runtime_args(config: AuditConfig, args) -> None:
     if getattr(args, "max_repair_attempts", None) is not None:
         config.poc_repair.max_repair_attempts = args.max_repair_attempts
         config.poc_repair.effective_source = "explicit"
+
+
+def _run_graph_decision_smoke(config: AuditConfig, args) -> int:
+    load_integration_environment(config, cwd=Path.cwd(), env=os.environ)
+    if args.provider:
+        config.llm.provider = args.provider
+    if args.model:
+        config.llm.model = args.model
+    prerequisites = {
+        "live_flag": bool(args.live),
+        "policy_opt_in": os.environ.get("AUDIT_AGENT_RUN_GRAPH_SMOKE") == "1",
+        "real_provider": config.llm.provider not in {"", "mock", "disabled"},
+        "model_configured": config.llm.model not in {"", "mock", "disabled"},
+        "api_key_configured": bool(os.environ.get(config.llm.api_key_env)),
+    }
+    if not all(prerequisites.values()):
+        print(json.dumps({"status": "skipped", "prerequisites": prerequisites}, indent=2))
+        return 0
+    target = Path(args.target).resolve()
+    fixture_root = (Path.cwd() / "fixtures").resolve()
+    if not target.is_relative_to(fixture_root) or not target.is_dir():
+        print(json.dumps({"status": "skipped", "reason": "target-must-be-local-fixture"}, indent=2))
+        return 0
+    config.runtime_enabled = True
+    config.graph.mode = "adaptive-graph"
+    config.graph.max_nodes = min(config.graph.max_nodes, 20)
+    config.graph.max_scheduler_iterations = min(config.graph.max_scheduler_iterations, 64)
+    config.graph.max_replans = min(config.graph.max_replans, 2)
+    config.graph.max_checkpoints = min(config.graph.max_checkpoints, 2)
+    config.llm_decisions.enabled = True
+    config.llm_decisions.roles = ["orchestrator"]
+    config.llm.request_budget = min(config.llm.request_budget or 2, 2)
+    config.llm.token_budget = min(config.llm.token_budget, 20_000)
+    config.memory.enabled = False
+    config.mcp.enabled = False
+    config.cve_mcp.enabled = False
+    config.sandbox.enabled = False
+    summary = run_audit(str(target), config, args.output)
+    run_dir = Path(summary["run_dir"])
+    state = json.loads((run_dir / "runtime_state" / "state.json").read_text(encoding="utf-8"))
+    decision_artifacts = sorted(str(path) for path in (run_dir / "prompts").glob("*graph-decision*"))
+    status = "passed" if state.get("status") == "succeeded" and decision_artifacts else "failed"
+    print(
+        json.dumps(
+            {
+                "status": status,
+                "graph_mode": state.get("graph_mode"),
+                "checkpoint_counts": state.get("checkpoint_counts", {}),
+                "graph_fallback_reason": state.get("graph_fallback_reason", ""),
+                "decision_artifact_count": len(decision_artifacts),
+                "run_dir": str(run_dir),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0 if status == "passed" else 2
 
 
 def _add_integration_flags(parser: argparse.ArgumentParser) -> None:

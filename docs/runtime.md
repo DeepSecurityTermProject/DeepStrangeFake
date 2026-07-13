@@ -3,6 +3,31 @@
 This runtime turns the deterministic four-agent MVP into a configurable LLM
 agent system while preserving offline mock mode.
 
+## Execution Graph Modes
+
+The runtime exposes three explicit modes:
+
+- `deterministic-graph` is the default and runs the versioned audit DAG through the single-threaded scheduler.
+- `adaptive-graph` starts from the same DAG and permits bounded, policy-approved future-node expansion at post-recon and post-analysis checkpoints.
+- `legacy` retains the previous procedural pipeline as a rollback mode.
+
+Select a mode with `audit-agent scan --graph-mode <mode>`. Adaptive scheduling changes the validated path; it does not run nodes in parallel and does not grant new tools, network access, target writes, or executable model-authored behavior.
+
+Graph runs store immutable artifacts under `runs/<run>/graphs/`: the initial graph, transition batches, redacted mutation proposals and policy outcomes, committed revisions, final graph, execution summary, and side-effect-free replay. `runtime_state/state.json` contains additive graph refs, checkpoint counts, fallback reason, and the actual execution path. JSON and Markdown reports contain a concise graph summary and refs.
+
+Adaptive decisions use the strict `orchestrator.graph-decision.v1` schema. Post-recon supports bounded local-context and scan refinement. Post-analysis supports evidence refinement, repeat analysis, optional-node skipping with a safe bypass, and verification routing. Unknown fields/actions, malformed output, provider failure, policy denial, invalid candidates, budget exhaustion, and mutation persistence failure retain the last committed graph.
+
+Limits include maximum nodes, scheduler iterations, attempts per node, replans, checkpoints, LLM tokens, tool calls, and sandbox starts. VerificationEngine's PoC and constrained repair loop remain inside one `validation` graph-node attempt; their artifacts are correlated to that task without graph-level retry duplication.
+
+The optional real-provider contract smoke is separately gated:
+
+```powershell
+$env:AUDIT_AGENT_RUN_GRAPH_SMOKE = "1"
+audit-agent graph-decision-smoke --live --provider openai-compatible --model <configured-model>
+```
+
+It accepts only a local path below `fixtures/`, disables MCP, memory, and sandbox execution, and caps provider requests and graph growth. Without every opt-in/configuration prerequisite it returns `status: skipped` without making a provider request.
+
 ## Runtime Kernel
 
 `audit_agent.runtime.AgentRuntime` is now the single orchestration layer behind

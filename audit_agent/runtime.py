@@ -16,6 +16,22 @@ from .decisions import (
     persist_decision_bundle,
 )
 from .evidence import EvidenceBuilder
+from .graph_artifacts import GraphArtifactRecorder
+from .graph_models import GraphBudget
+from .graph_policy import (
+    CHECKPOINT_ACTIONS,
+    GraphMutationOutcome,
+    GraphMutationPolicy,
+    parse_graph_decision_payload,
+    translate_next_actions,
+)
+from .graph_replay import replay_graph
+from .graph_scheduler import GraphNodeResult, GraphScheduler
+from .graph_templates import (
+    REQUIRED_TEMPLATE_IDS,
+    build_default_template_catalog,
+    build_deterministic_audit_graph,
+)
 from .intelligence import CveMcpAdapter, normalize_cve_mcp_output
 from .llm import BudgetedLLMClient, build_llm_client, persist_llm_artifact, validate_json_schema
 from .mcp_client import CveMcpClient
@@ -53,10 +69,27 @@ class TaskState:
     finished_at: str | None = None
     created_at: str = field(default_factory=utc_now)
     id: str | None = None
+    graph_node_id: str | None = None
+    graph_revision: int | None = None
+    dependency_refs: list[str] = field(default_factory=list)
+    attempt: int = 0
+    lineage: dict[str, Any] = field(default_factory=dict)
+    transition_refs: list[str] = field(default_factory=list)
+    correlation_refs: list[str] = field(default_factory=list)
+    causation_refs: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.id:
-            self.id = stable_id("TSK", self.run_id, self.role, self.kind, self.created_at)
+            self.id = stable_id(
+                "TSK",
+                self.run_id,
+                self.role,
+                self.kind,
+                self.graph_node_id,
+                self.graph_revision,
+                self.attempt,
+                self.created_at,
+            )
 
     def mark_running(self, message_ref: str | None = None) -> None:
         self.status = "running"
@@ -97,6 +130,11 @@ class TaskState:
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TaskState":
+        allowed = set(cls.__dataclass_fields__)
+        return cls(**{key: value for key, value in payload.items() if key in allowed})
+
     def _append_message(self, ref: str | None) -> None:
         if ref:
             self._append_unique(self.message_refs, ref)
@@ -121,6 +159,16 @@ class RunState:
     started_at: str | None = None
     finished_at: str | None = None
     created_at: str = field(default_factory=utc_now)
+    graph_mode: str = "legacy"
+    initial_graph_ref: str | None = None
+    active_graph_ref: str | None = None
+    final_graph_ref: str | None = None
+    graph_revision_refs: list[str] = field(default_factory=list)
+    graph_transition_refs: list[str] = field(default_factory=list)
+    mutation_refs: list[str] = field(default_factory=list)
+    checkpoint_counts: dict[str, int] = field(default_factory=dict)
+    execution_path: list[str] = field(default_factory=list)
+    graph_fallback_reason: str = ""
 
     def mark_running(self, message_ref: str | None = None) -> None:
         self.status = "running"
@@ -154,6 +202,13 @@ class RunState:
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RunState":
+        allowed = set(cls.__dataclass_fields__)
+        values = {key: value for key, value in payload.items() if key in allowed and key != "tasks"}
+        values["tasks"] = [TaskState.from_dict(item) for item in payload.get("tasks", [])]
+        return cls(**values)
 
     @staticmethod
     def _append_unique(values: list[str], value: str) -> None:
@@ -429,6 +484,14 @@ class AgentRuntime:
         }
 
     def run_audit(self, target: str) -> dict[str, Any]:
+        if self.config.graph.mode != "legacy":
+            return self._run_graph_audit(target)
+        return self._run_legacy_audit(target)
+
+    def _run_graph_audit(self, target: str) -> dict[str, Any]:
+        return _GraphAuditExecution(self, target).run()
+
+    def _run_legacy_audit(self, target: str) -> dict[str, Any]:
         config = self.config
         metadata = analyze_target(target, audit_scope=config.audit_scope)
         store = RunStore(self.output_dir)
@@ -1165,6 +1228,941 @@ class AgentRuntime:
             arguments = dict(request.get("arguments") or {})
             result = self.tool_broker.dispatch("recon", tool_name, arguments, metadata=metadata, memory_store=memory_store, task_state=task)
             self.runtime_refs["tool_call_refs"].append(result.id or "")
+
+
+class _GraphAuditExecution:
+    """Graph-mode composition over the existing runtime service boundaries."""
+
+    def __init__(self, runtime: AgentRuntime, target: str) -> None:
+        self.runtime = runtime
+        self.config = runtime.config
+        self.target = target
+        self.metadata = None
+        self.llm_client = None
+        self.graph = None
+        self.catalog = build_default_template_catalog()
+        self.recorder = None
+        self.policy = None
+        self.tasks: dict[str, TaskState] = {}
+        self.next_actions: dict[str, list[str]] = {}
+        self.revision_records: list[dict[str, Any]] = []
+        self.mutation_records: list[dict[str, Any]] = []
+        self.memory_store = None
+        self.memory_retrievals = []
+        self.scan_results = []
+        self.intelligence = []
+        self.recon = None
+        self.analysis = None
+        self.candidates = []
+        self.verification = None
+        self.decisions = []
+        self.validation_results = []
+        self.evidence_chains = []
+        self.summary: dict[str, Any] | None = None
+        self.scheduler = None
+
+    def run(self) -> dict[str, Any]:
+        self._initialize()
+        self.recorder.persist_initial(self.graph)
+        self.revision_records.append({"revision": self.graph.revision})
+        self.policy = GraphMutationPolicy(
+            self.catalog,
+            REQUIRED_TEMPLATE_IDS,
+            allow_target_writes=False,
+            artifact_ref_validator=lambda ref: ref in set(self.runtime.run_state.artifact_refs),
+        )
+        scheduler = GraphScheduler(
+            self.graph,
+            registered_templates=self.catalog.template_ids(),
+            service_handlers={
+                "memory-context": self._memory_context,
+                "intelligence": self._intelligence,
+                "post-recon-checkpoint": self._checkpoint,
+                "post-analysis-checkpoint": self._checkpoint,
+                "local-context-refinement": self._local_context_refinement,
+                "verification-routing": self._verification_routing,
+                "validation": self._validation,
+                "evidence-finalization": self._evidence_finalization,
+                "report-finalization": self._report_finalization,
+            },
+            agent_executor=self._agent_executor,
+            tool_executor=self._tool_executor,
+            transition_sink=self._persist_transitions,
+            required_template_ids=REQUIRED_TEMPLATE_IDS,
+        )
+        self.scheduler = scheduler
+        result = scheduler.run()
+        replay = replay_graph(
+            self.graph.to_dict(),
+            [item.to_dict() for item in result.transitions],
+            revisions=self.revision_records,
+            mutation_records=self.mutation_records,
+        )
+        self.recorder.persist_final(self.graph, result, replay)
+        if result.status != "succeeded" or self.summary is None:
+            raise RuntimeError(result.failure_reason or f"graph execution ended as {result.status}")
+        self.summary.update(
+            {
+                "graph_mode": self.graph.mode,
+                "final_graph_ref": self.runtime.run_state.final_graph_ref,
+                "execution_path": list(result.execution_path),
+            }
+        )
+        self.runtime.run_state.mark_succeeded(self.summary)
+        self.runtime.artifacts.persist_state()
+        return self.summary
+
+    def _initialize(self) -> None:
+        runtime = self.runtime
+        config = self.config
+        self.metadata = analyze_target(self.target, audit_scope=config.audit_scope)
+        runtime.run = RunStore(runtime.output_dir).create_run(
+            self.metadata.target.repo or Path(self.metadata.target.path or self.target).name
+        )
+        runtime.run_state = RunState(
+            run_id=runtime.run.run_id,
+            target=self.target,
+            graph_mode=config.graph.mode,
+            config_summary={
+                "runtime_enabled": config.runtime_enabled,
+                "llm_provider": config.llm.provider,
+                "llm_decisions": config.llm_decisions.enabled,
+                "poc_repair": config.poc_repair.enabled,
+                "poc_repair_source": config.poc_repair.effective_source,
+                "graph_mode": config.graph.mode,
+            },
+        )
+        runtime.bus = runtime._build_bus(self.target)
+        runtime.run_state.mark_running()
+        runtime.artifacts = ArtifactStore(runtime.run, bus=runtime.bus, run_state=runtime.run_state)
+        runtime.tool_broker = ToolBroker(config, runtime.artifacts, bus=runtime.bus)
+        runtime.artifacts.write_json("metadata", "repository.json", self.metadata.to_dict())
+        self.llm_client = build_llm_client(config.llm) if config.runtime_enabled else None
+        if self.llm_client and config.llm.request_budget is not None:
+            self.llm_client = BudgetedLLMClient(
+                self.llm_client,
+                request_budget=config.llm.request_budget,
+                token_budget=config.llm.token_budget,
+            )
+        budgets = GraphBudget(
+            max_nodes=config.graph.max_nodes,
+            max_scheduler_iterations=config.graph.max_scheduler_iterations,
+            max_node_attempts=config.graph.max_node_attempts,
+            max_replans=config.graph.max_replans,
+            max_checkpoints=config.graph.max_checkpoints,
+            max_llm_tokens=config.llm.token_budget,
+            max_tool_calls=config.audit_scope.tool_budget,
+        )
+        self.graph = build_deterministic_audit_graph(
+            runtime.run.run_id,
+            mode=config.graph.mode,
+            budgets=budgets,
+        )
+        self.recorder = GraphArtifactRecorder(runtime.artifacts, runtime.bus, runtime.run_state)
+
+    def _task_for(self, node) -> TaskState:
+        task = self.tasks.get(node.node_id)
+        if task is not None:
+            return task
+        dependencies = sorted(
+            edge.source_node_id
+            for edge in self.graph.edges
+            if edge.target_node_id == node.node_id
+        )
+        task = TaskState(
+            run_id=self.runtime.run_state.run_id,
+            role=node.executor_ref,
+            kind=node.executor_kind,
+            graph_node_id=node.node_id,
+            graph_revision=self.graph.revision,
+            dependency_refs=dependencies,
+            attempt=node.attempt_count,
+            lineage=node.lineage.to_dict(),
+        )
+        self.tasks[node.node_id] = task
+        self.runtime.run_state.add_task(task)
+        self.runtime.runtime_refs["runtime_task_refs"].append(task.id or "")
+        return task
+
+    def _persist_transitions(self, transitions) -> None:
+        ref = self.recorder.persist_transitions(self.graph, transitions)
+        for transition in transitions:
+            node = self.graph.node(transition.node_id)
+            task = self._task_for(node)
+            task.graph_revision = transition.revision
+            task.attempt = node.attempt_count
+            task.transition_refs.append(ref)
+            task.correlation_refs.extend(
+                item for item in transition.correlation_refs if item not in task.correlation_refs
+            )
+            task.causation_refs.extend(
+                item for item in transition.causation_refs if item not in task.causation_refs
+            )
+            if transition.new_status == "running":
+                task.mark_running()
+            elif transition.new_status == "succeeded":
+                task.mark_succeeded(output_refs=list(node.artifact_refs))
+            elif transition.new_status == "failed":
+                task.mark_failed(transition.cause)
+            elif transition.new_status == "skipped":
+                task.mark_skipped(transition.cause)
+            elif transition.new_status == "fallback":
+                task.mark_fallback(transition.cause)
+            else:
+                task.status = transition.new_status
+
+    def _agent_executor(self, role: str, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        task = self._task_for(node)
+        if role == "orchestrator":
+            output = self.runtime._invoke_agent(role, task, {"metadata": self.metadata})
+            self.next_actions[node.node_id] = list(output.next_actions)
+            plan = output.payload["plan"]
+            if self.config.runtime_enabled and self.llm_client:
+                response, _, _ = self._optional_llm_role(
+                    task,
+                    self.llm_client,
+                    "orchestrator",
+                    "orchestrator.plan",
+                    {
+                        "repository_summary": self.metadata.to_dict(),
+                        "audit_scope": self.config.audit_scope.vulnerability_classes,
+                    },
+                )
+                if response is not None and self.runtime._decision_enabled("orchestrator"):
+                    proposal = self._decision_proposal("orchestrator", response)
+                    gate = evaluate_decision_policy("orchestrator", proposal, self.config)
+                    plan = self.runtime._apply_orchestrator_proposal(plan, proposal, gate)
+                    merged = merge_decision(
+                        "orchestrator",
+                        {"plan": OrchestratorAgent(self.config).plan(self.metadata).to_dict()},
+                        proposal,
+                        gate.status,
+                        gate.reasons,
+                        final_output={"plan": plan.to_dict()},
+                    )
+                    merged.policy_gate_id = gate.id
+                    path = self.runtime.artifacts.write_decision(
+                        "orchestrator", proposal, gate, merged, task
+                    )
+                    self.runtime._publish_decision_events(
+                        "orchestrator", proposal, gate, merged, [path], task
+                    )
+            path = self.runtime.artifacts.write_json("metadata", "plan.json", plan.to_dict(), task)
+            return GraphNodeResult(outputs={"plan": plan}, artifact_refs=[path])
+        if role == "recon":
+            output = self.runtime._invoke_agent(
+                role,
+                task,
+                {"metadata": self.metadata, "intelligence": self.intelligence},
+            )
+            self.next_actions[node.node_id] = list(output.next_actions)
+            self.recon = output.payload["result"]
+            if self.config.runtime_enabled and self.llm_client:
+                response, _, _ = self._optional_llm_role(
+                    task,
+                    self.llm_client,
+                    "recon",
+                    "recon.summary",
+                    {
+                        "repository_metadata": self.metadata.to_dict(),
+                        "intelligence_context": [item.to_dict() for item in self.intelligence],
+                        "memory_context": [item.to_dict() for item in self.memory_retrievals],
+                    },
+                )
+                if response is not None and self.runtime._decision_enabled("recon"):
+                    proposal = self._decision_proposal("recon", response)
+                    gate = evaluate_decision_policy("recon", proposal, self.config)
+                    if gate.status == "accepted":
+                        self.runtime._apply_recon_proposal(self.recon, proposal)
+                        self.runtime._dispatch_recon_tool_requests(
+                            task, proposal, self.metadata, self.memory_store
+                        )
+                    merged = merge_decision(
+                        "recon",
+                        {"high_risk_areas": self.recon.payload.get("high_risk_areas", [])},
+                        proposal,
+                        gate.status,
+                        gate.reasons,
+                        final_output={
+                            "handoff": self.recon.handoff.to_dict(),
+                            "payload": self.recon.payload,
+                        },
+                    )
+                    merged.policy_gate_id = gate.id
+                    path = self.runtime.artifacts.write_decision("recon", proposal, gate, merged, task)
+                    self.runtime._publish_decision_events("recon", proposal, gate, merged, [path], task)
+            trace = self.runtime.artifacts.write_json(
+                "agent_traces", "recon.json", self.recon.trace.to_dict(), task
+            )
+            handoff = self.runtime.artifacts.write_json(
+                "handoffs", "recon-to-analysis.json", self.recon.handoff.to_dict(), task
+            )
+            return GraphNodeResult(outputs={"recon": self.recon}, artifact_refs=[trace, handoff])
+        if role == "analysis":
+            output = self.runtime._invoke_agent(
+                role,
+                task,
+                {
+                    "metadata": self.metadata,
+                    "recon_handoff": self.recon.handoff,
+                    "tool_results": self.scan_results,
+                    "intelligence": self.intelligence,
+                    **inputs,
+                },
+            )
+            self.next_actions[node.node_id] = list(output.next_actions)
+            self.analysis = output.payload["result"]
+            self.candidates = list(self.analysis.payload["candidates"])
+            if self.config.runtime_enabled and self.llm_client:
+                response, _, _ = self._optional_llm_role(
+                    task,
+                    self.llm_client,
+                    "analysis",
+                    "analysis.candidates",
+                    {
+                        "repository_summary": self.metadata.to_dict(),
+                        "tool_outputs": [item.to_dict() for item in self.scan_results],
+                        "memory_context": [item.to_dict() for item in self.memory_retrievals],
+                        "intelligence_context": [item.to_dict() for item in self.intelligence],
+                    },
+                )
+                if response is not None and self.runtime._decision_enabled("analysis"):
+                    proposal = self._decision_proposal("analysis", response)
+                    gate = evaluate_decision_policy("analysis", proposal, self.config)
+                    llm_candidates = []
+                    if gate.status == "accepted":
+                        payload = dict(response.parsed_json or {})
+                        if proposal.selected_actions:
+                            payload["candidates"] = proposal.selected_actions
+                        llm_candidates = findings_from_llm_candidates(payload, self.metadata)
+                        for finding in llm_candidates:
+                            annotate_finding_from_decision(finding, proposal, gate, None)
+                            finding.metadata["decision_source"] = "llm"
+                        self.candidates.extend(llm_candidates)
+                    merged = merge_decision(
+                        "analysis",
+                        {"candidate_count": len(self.analysis.payload["candidates"])},
+                        proposal,
+                        gate.status,
+                        gate.reasons,
+                        final_output={
+                            "candidate_count": len(self.candidates),
+                            "llm_candidate_count": len(llm_candidates),
+                        },
+                    )
+                    merged.policy_gate_id = gate.id
+                    for finding in self.candidates:
+                        if "decision_source" not in finding.metadata:
+                            annotate_finding_from_decision(finding, proposal, gate, merged)
+                    path = self.runtime.artifacts.write_decision("analysis", proposal, gate, merged, task)
+                    self.runtime._publish_decision_events("analysis", proposal, gate, merged, [path], task)
+                elif response is not None:
+                    self.candidates.extend(
+                        findings_from_llm_candidates(response.parsed_json or {}, self.metadata)
+                    )
+            suffix = "" if node.node_id == "analysis" else f"-{node.node_id}"
+            trace = self.runtime.artifacts.write_json(
+                "agent_traces", f"analysis{suffix}.json", self.analysis.trace.to_dict(), task
+            )
+            handoff = self.runtime.artifacts.write_json(
+                "handoffs", f"analysis-to-verification{suffix}.json", self.analysis.handoff.to_dict(), task
+            )
+            findings = self.runtime.artifacts.write_json(
+                "findings", f"candidates{suffix}.json", [item.to_dict() for item in self.candidates], task
+            )
+            return GraphNodeResult(
+                outputs={"candidates": self.candidates},
+                artifact_refs=[trace, handoff, findings],
+            )
+        if role == "verification":
+            candidates = inputs.get("candidates", self.candidates)
+            output = self.runtime._invoke_agent(
+                role,
+                task,
+                {
+                    "candidates": candidates,
+                    "metadata": self.metadata,
+                    "intelligence": self.intelligence,
+                },
+            )
+            self.next_actions[node.node_id] = list(output.next_actions)
+            self.verification = output.payload["result"]
+            self.decisions = list(self.verification.decisions)
+            if self.config.runtime_enabled and self.llm_client:
+                response, _, _ = self._optional_llm_role(
+                    task,
+                    self.llm_client,
+                    "verification",
+                    "verification.decision",
+                    {
+                        "candidate_json": [finding.to_dict() for finding in candidates],
+                        "evidence_summary": [item.to_dict() for item in self.scan_results],
+                    },
+                )
+                if response is not None and self.runtime._decision_enabled("verification"):
+                    proposal = self._decision_proposal("verification", response)
+                    self.decisions, gate, merged = apply_verification_decision_proposal(
+                        candidates,
+                        self.decisions,
+                        proposal,
+                        self.config,
+                    )
+                    self.verification.decisions = self.decisions
+                    for decision in self.decisions:
+                        annotate_finding_from_decision(decision.finding, proposal, gate, merged)
+                    path = self.runtime.artifacts.write_decision(
+                        "verification", proposal, gate, merged, task
+                    )
+                    self.runtime._publish_decision_events(
+                        "verification", proposal, gate, merged, [path], task
+                    )
+            for decision in self.decisions:
+                decision.finding.metadata.setdefault("decision_source", decision.decision_source)
+                decision.finding.metadata.setdefault("runtime_task_refs", []).append(task.id or "")
+            trace = self.runtime.artifacts.write_json(
+                "agent_traces", "verification.json", self.verification.trace.to_dict(), task
+            )
+            handoff = self.runtime.artifacts.write_json(
+                "handoffs", "verification-to-reporting.json", self.verification.handoff.to_dict(), task
+            )
+            decisions = self.runtime.artifacts.write_json(
+                "findings", "verification.json", [item.to_dict() for item in self.decisions], task
+            )
+            return GraphNodeResult(
+                outputs={"decisions": self.decisions},
+                artifact_refs=[trace, handoff, decisions],
+            )
+        raise KeyError(f"graph agent role is not registered: {role}")
+
+    def _decision_proposal(self, role: str, response):
+        return build_decision_from_llm_response(
+            role,
+            response.parsed_json,
+            prompt_ref=(
+                self.runtime.runtime_refs["prompt_refs"][-1]
+                if self.runtime.runtime_refs["prompt_refs"]
+                else None
+            ),
+            llm_response_ref=response.id,
+            provider=response.provider,
+            model=response.model,
+            provider_metadata=response.raw_response,
+            raw_output=response.text,
+            repair_enabled=self.config.llm_decisions.repair_enabled,
+        )
+
+    def _optional_llm_role(self, task, llm_client, role, template_id, variables):
+        try:
+            return self.runtime._run_llm_role(
+                task,
+                llm_client,
+                role,
+                template_id,
+                variables,
+            )
+        except Exception as exc:
+            task.mark_fallback(f"llm-{type(exc).__name__}")
+            path = self.runtime.artifacts.write_json(
+                "runtime_errors",
+                f"llm-{role}-{task.graph_node_id}.json",
+                {
+                    "schema_version": "llm-role-fallback.v1",
+                    "role": role,
+                    "graph_node_id": task.graph_node_id,
+                    "fallback_reason": type(exc).__name__,
+                    "message": str(exc),
+                },
+                task,
+            )
+            return None, path, None
+
+    def _tool_executor(self, tool_ref: str, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        if tool_ref != "static-scan":
+            raise KeyError(f"graph tool template is not registered: {tool_ref}")
+        task = self._task_for(node)
+        dataflow = self.runtime.tool_broker.dispatch(
+            "analysis", "dataflow-scan", {}, metadata=self.metadata, task_state=task
+        )
+        pattern = self.runtime.tool_broker.dispatch(
+            "analysis", "pattern-scan", {}, metadata=self.metadata, task_state=task
+        )
+        self.scan_results = [dataflow, pattern]
+        paths = [
+            self.runtime.artifacts.write_json("tool_outputs", "dataflow-scan.json", dataflow.to_dict(), task),
+            self.runtime.artifacts.write_json("tool_outputs", "pattern-scan.json", pattern.to_dict(), task),
+        ]
+        return GraphNodeResult(outputs={"scan_results": self.scan_results}, artifact_refs=paths)
+
+    def _memory_context(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        task = self._task_for(node)
+        if not (
+            self.config.runtime_enabled
+            and self.config.memory.enabled
+            and self.metadata.root_path
+        ):
+            return GraphNodeResult(outputs={"context": []})
+        self.memory_store = LexicalMemoryStore(self.runtime.run.path / "memory")
+        MemoryIndexer(self.memory_store, self.config.memory).index_repository(self.metadata)
+        self.memory_retrievals = self.memory_store.retrieve(
+            "request args os.system select query secret", limit=5
+        )
+        path = persist_retrievals(
+            self.runtime.run.path / "memory", self.memory_retrievals, "initial-retrieval"
+        )
+        task.record_artifact(path)
+        self.runtime.run_state.record_artifact(path)
+        self.runtime.runtime_refs["memory_refs"].extend(
+            item.record.id or "" for item in self.memory_retrievals
+        )
+        return GraphNodeResult(outputs={"context": self.memory_retrievals}, artifact_refs=[str(path)])
+
+    def _local_context_refinement(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        if self.memory_store is None:
+            return GraphNodeResult(outputs={"context": self.memory_retrievals})
+        refined = self.memory_store.retrieve("local evidence source sink", limit=5)
+        self.memory_retrievals = refined
+        path = persist_retrievals(
+            self.runtime.run.path / "memory", refined, f"refinement-{node.node_id}"
+        )
+        self._task_for(node).record_artifact(path)
+        self.runtime.run_state.record_artifact(path)
+        return GraphNodeResult(outputs={"context": refined}, artifact_refs=[str(path)])
+
+    def _verification_routing(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        candidates = inputs.get("candidates", self.candidates)
+        self.candidates = list(candidates)
+        path = self.runtime.artifacts.write_json(
+            "findings",
+            f"verification-routing-{node.node_id}.json",
+            [item.to_dict() for item in self.candidates],
+            self._task_for(node),
+        )
+        return GraphNodeResult(outputs={"candidates": self.candidates}, artifact_refs=[path])
+
+    def _intelligence(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        self.intelligence = []
+        if not self.metadata.dependencies:
+            return GraphNodeResult(outputs={"intelligence": self.intelligence})
+        task = self._task_for(node)
+        first_dep = self.metadata.dependencies[0]
+        artifact_refs = []
+        if self.config.runtime_enabled and self.config.mcp.enabled:
+            client = CveMcpClient(
+                self.config.mcp.command,
+                self.config.mcp.timeout_seconds,
+                self.config.mcp.query_budget,
+                allowed_tools=(
+                    self.config.mcp.allowed_tools
+                    or self.config.integration.safe_cve_mcp_tools
+                ),
+                cwd=self.config.mcp.working_dir,
+                env=self.config.mcp.env,
+            )
+            intelligence = client.scan_dependency(first_dep.identifiers)
+            self.intelligence.append(intelligence)
+            path = self.runtime.artifacts.write_json(
+                "mcp", "cve-mcp-intelligence.json", intelligence.to_dict(), task
+            )
+            artifact_refs.append(path)
+            self.runtime.runtime_refs["mcp_call_refs"].append(intelligence.id or "")
+        else:
+            adapter = CveMcpAdapter(
+                enabled=self.config.cve_mcp.enabled,
+                command=self.config.cve_mcp.command,
+                endpoint=self.config.cve_mcp.endpoint,
+                env=self.config.cve_mcp.env,
+                timeout=self.config.cve_mcp.timeout_seconds,
+                query_budget=self.config.cve_mcp.query_budget,
+                degraded_mode=self.config.cve_mcp.degraded_mode,
+            )
+            observation = adapter.query("scan_dependencies", first_dep.identifiers)
+            path = self.runtime.artifacts.write_json(
+                "intelligence", "cve-mcp-observation.json", observation.to_dict(), task
+            )
+            artifact_refs.append(path)
+            self.intelligence.append(
+                normalize_cve_mcp_output(
+                    {
+                        "cwe_ids": ["CWE-89"],
+                        "references": [],
+                        "risk_score": 0,
+                        "mcp_degraded": observation.degraded,
+                    },
+                    query={"dependency": first_dep.name},
+                )
+            )
+        return GraphNodeResult(
+            outputs={"intelligence": self.intelligence},
+            artifact_refs=artifact_refs,
+        )
+
+    def _checkpoint(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        checkpoint_id = node.lineage.checkpoint_id or ""
+        if self.graph.mode != "adaptive-graph":
+            return GraphNodeResult(outputs={"checkpoint": "deterministic"})
+        source_id = "reconnaissance" if checkpoint_id == "post-recon" else "analysis"
+        hints = list(self.next_actions.get(source_id, []))
+        model_status = "disabled"
+        if self.runtime._decision_enabled("orchestrator") and self.llm_client is not None:
+            try:
+                model_hints, model_refs = self._graph_model_decision(node, checkpoint_id)
+                hints.extend(item for item in model_hints if item not in hints)
+                model_status = "accepted"
+            except Exception as exc:
+                model_status = f"fallback:{type(exc).__name__}"
+                model_refs = self._persist_checkpoint_fallback(node, checkpoint_id, exc)
+        else:
+            model_refs = []
+        proposal = translate_next_actions(
+            graph_id=self.graph.graph_id,
+            revision=self.graph.revision,
+            checkpoint_id=checkpoint_id,
+            next_actions=hints,
+        )
+        if not proposal.operations:
+            return GraphNodeResult(
+                outputs={"checkpoint": "no-registered-actions", "model_status": model_status},
+                artifact_refs=model_refs,
+            )
+        try:
+            outcome = self.policy.evaluate(self.graph, proposal)
+        except Exception as exc:
+            outcome = GraphMutationOutcome(
+                proposal.proposal_id,
+                False,
+                self.graph,
+                [],
+                [f"policy exception: {type(exc).__name__}"],
+                fallback_reason="policy-exception",
+            )
+        state_snapshot = {
+            "active_graph_ref": self.runtime.run_state.active_graph_ref,
+            "graph_revision_refs": list(self.runtime.run_state.graph_revision_refs),
+            "mutation_refs": list(self.runtime.run_state.mutation_refs),
+            "checkpoint_counts": dict(self.runtime.run_state.checkpoint_counts),
+            "graph_fallback_reason": self.runtime.run_state.graph_fallback_reason,
+            "message_refs": list(self.runtime.run_state.message_refs),
+        }
+        try:
+            mutation_refs = self.recorder.persist_mutation(proposal, outcome)
+        except Exception as exc:
+            for key, value in state_snapshot.items():
+                setattr(self.runtime.run_state, key, value)
+            self.runtime.run_state.graph_fallback_reason = "mutation-persistence-failed"
+            return GraphNodeResult(
+                outputs={"checkpoint": "fallback", "model_status": model_status},
+                artifact_refs=model_refs,
+                correlation_refs=[proposal.proposal_id],
+            )
+        if outcome.committed:
+            self._adopt_graph(outcome.graph)
+            outcome.graph = self.graph
+            self.revision_records.append({"revision": self.graph.revision})
+        self.mutation_records.append(outcome.to_dict())
+        return GraphNodeResult(
+            outputs={
+                "checkpoint": "committed" if outcome.committed else "fallback",
+                "model_status": model_status,
+            },
+            artifact_refs=model_refs + mutation_refs,
+            correlation_refs=[proposal.proposal_id],
+        )
+
+    def _graph_model_decision(self, node, checkpoint_id: str) -> tuple[list[str], list[str]]:
+        task = self._task_for(node)
+        completed = (
+            self.recon.payload if checkpoint_id == "post-recon" and self.recon else {
+                "candidate_count": len(self.candidates),
+                "candidate_ids": [item.id for item in self.candidates],
+            }
+        )
+        prompt = render_default_prompt(
+            "orchestrator",
+            "orchestrator.graph-decision",
+            {
+                "checkpoint_id": checkpoint_id,
+                "completed_stage": completed,
+                "available_actions": sorted(CHECKPOINT_ACTIONS[checkpoint_id]),
+                "remaining_budgets": {
+                    "replans": max(0, self.graph.budgets.max_replans - self.graph.global_replan_count),
+                    "checkpoints": max(
+                        0,
+                        self.graph.budgets.max_checkpoints - sum(self.graph.checkpoint_counts.values()),
+                    ),
+                },
+            },
+            self.config.prompts,
+        )
+        prompt_path = self.runtime.artifacts.write_prompt(prompt, task)
+        self.runtime.runtime_refs["prompt_refs"].append(prompt.id or "")
+        request = LLMRequest(
+            role="orchestrator",
+            prompt=prompt.rendered,
+            model=self.config.llm.model,
+            provider=self.config.llm.provider,
+            response_schema=prompt.output_schema,
+            response_format="auto",
+        )
+        response = self.llm_client.complete(request)
+        validate_json_schema(response.parsed_json, prompt.output_schema)
+        actions = parse_graph_decision_payload(
+            response.parsed_json,
+            checkpoint_id=checkpoint_id,
+        )
+        llm_path = self.runtime.artifacts.write_llm(request, response, task)
+        self.runtime.runtime_refs["llm_response_refs"].append(response.id or "")
+        return actions, [prompt_path, llm_path]
+
+    def _persist_checkpoint_fallback(self, node, checkpoint_id: str, exc: Exception) -> list[str]:
+        self.runtime.run_state.graph_fallback_reason = f"model-decision-{type(exc).__name__}"
+        path = self.runtime.artifacts.write_json(
+            "runtime_errors",
+            f"graph-decision-{checkpoint_id}.json",
+            {
+                "schema_version": "graph-decision-fallback.v1",
+                "checkpoint_id": checkpoint_id,
+                "fallback_reason": type(exc).__name__,
+                "message": str(exc),
+            },
+            self._task_for(node),
+        )
+        return [path]
+
+    def _adopt_graph(self, candidate) -> None:
+        current = {item.node_id: item for item in self.graph.nodes}
+        merged = []
+        for candidate_node in candidate.nodes:
+            existing = current.get(candidate_node.node_id)
+            if existing is None:
+                merged.append(candidate_node)
+                continue
+            existing.__dict__.update(candidate_node.__dict__)
+            merged.append(existing)
+        for field_name in candidate.__dataclass_fields__:
+            if field_name == "nodes":
+                continue
+            setattr(self.graph, field_name, getattr(candidate, field_name))
+        self.graph.nodes = merged
+
+    def _validation(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        task = self._task_for(node)
+        verifier = VerificationEngine(
+            self.config,
+            self.runtime.run.path,
+            llm_client=self.llm_client,
+            message_bus=self.runtime.bus,
+        )
+        staged = []
+        verifier.begin_validation_phase(self.metadata)
+        for decision in self.decisions:
+            for key, values in self.runtime.runtime_refs.items():
+                decision.finding.metadata.setdefault(key, [])
+                for value in values:
+                    if value and value not in decision.finding.metadata[key]:
+                        decision.finding.metadata[key].append(value)
+            staged.append(
+                (
+                    decision.finding,
+                    verifier.verify(decision, self.metadata, self.config.default_validation_level),
+                )
+            )
+        self.validation_results = verifier.finalize_validation_phase(self.metadata, staged)
+        refs = list(verifier.integrity_artifact_refs)
+        for result in self.validation_results:
+            correlated = [
+                *result.attempt_refs,
+                *result.poc_refs,
+                *result.sandbox_result_refs,
+                *result.artifacts,
+            ]
+            refs.extend(correlated)
+            for ref in correlated:
+                if ref and ref not in task.correlation_refs:
+                    task.correlation_refs.append(ref)
+        for ref in refs:
+            task.record_artifact(ref)
+            self.runtime.run_state.record_artifact(ref)
+        refs = list(dict.fromkeys(ref for ref in refs if ref))
+        return GraphNodeResult(
+            outputs={"validations": self.validation_results},
+            artifact_refs=refs,
+            correlation_refs=list(task.correlation_refs),
+        )
+
+    def _evidence_finalization(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        builder = EvidenceBuilder(self.runtime.run.path / "evidence")
+        traces = [item.trace for item in (self.recon, self.analysis, self.verification) if item]
+        handoffs = [item.handoff for item in (self.recon, self.analysis, self.verification) if item]
+        self.evidence_chains = [
+            builder.build(
+                finding=decision.finding,
+                metadata=self.metadata,
+                tool_results=self.scan_results,
+                intelligence=self.intelligence,
+                verification=decision,
+                validation=validation,
+                agent_traces=traces,
+                handoffs=handoffs,
+            )
+            for decision, validation in zip(self.decisions, self.validation_results)
+        ]
+        refs = [item.id or "" for item in self.evidence_chains]
+        return GraphNodeResult(outputs={"evidence": self.evidence_chains}, artifact_refs=refs)
+
+    def _report_finalization(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        task = self._task_for(node)
+        status_counts = verification_status_counts(self.validation_results)
+        active = [
+            decision
+            for decision in self.decisions
+            if decision.finding.verification_status
+            in {
+                VerificationStatus.CONFIRMED,
+                VerificationStatus.LIKELY,
+                VerificationStatus.MANUAL_REQUIRED,
+            }
+        ]
+        runtime_summary = {
+            "kernel": {
+                "name": "AgentRuntime",
+                "state_ref": str(self.runtime.run.path / "runtime_state" / "state.json"),
+                "task_count": len(self.runtime.run_state.tasks),
+                "roles": sorted({item.role for item in self.runtime.run_state.tasks}),
+            },
+            "graph": {
+                "mode": self.graph.mode,
+                "graph_id": self.graph.graph_id,
+                "schema_version": self.graph.schema_version,
+                "template_id": self.graph.template_id,
+                "template_version": self.graph.template_version,
+                "template_content_hash": self.graph.template_content_hash,
+                "revision": self.graph.revision,
+                "initial_graph_ref": self.runtime.run_state.initial_graph_ref,
+                "mutation_counts": {
+                    "committed": sum(bool(item.get("committed")) for item in self.mutation_records),
+                    "denied": sum(not bool(item.get("committed")) for item in self.mutation_records),
+                },
+                "checkpoint_counts": dict(self.graph.checkpoint_counts),
+                "checkpoint_total": sum(self.graph.checkpoint_counts.values()),
+                "replan_count": self.graph.global_replan_count,
+                "execution_path": list(self.scheduler.execution_path if self.scheduler else []),
+                "execution_path_summary": {
+                    "node_count": len(self.scheduler.execution_path if self.scheduler else []),
+                    "agent_nodes": sum(
+                        self.graph.node(node_id).executor_kind == "agent"
+                        for node_id in (self.scheduler.execution_path if self.scheduler else [])
+                    ),
+                    "tool_nodes": sum(
+                        self.graph.node(node_id).executor_kind == "tool"
+                        for node_id in (self.scheduler.execution_path if self.scheduler else [])
+                    ),
+                    "service_nodes": sum(
+                        self.graph.node(node_id).executor_kind == "service"
+                        for node_id in (self.scheduler.execution_path if self.scheduler else [])
+                    ),
+                },
+                "fallback_reason": self.runtime.run_state.graph_fallback_reason,
+                "artifact_refs": {
+                    "initial_graph_ref": self.runtime.run_state.initial_graph_ref,
+                    "active_graph_ref": self.runtime.run_state.active_graph_ref,
+                    **self.recorder.expected_final_refs(self.graph),
+                    "revision_refs": list(self.runtime.run_state.graph_revision_refs),
+                    "transition_refs": list(self.runtime.run_state.graph_transition_refs),
+                    "mutation_refs": list(self.runtime.run_state.mutation_refs),
+                },
+                "verification_correlation": {
+                    "node_id": "validation",
+                    "graph_attempt_count": self.graph.node("validation").attempt_count,
+                    "internal_repair_attempt_count": sum(
+                        item.repair_attempt_count for item in self.validation_results
+                    ),
+                    "artifact_refs": list(self.tasks.get("validation").artifact_refs)
+                    if self.tasks.get("validation")
+                    else [],
+                },
+            },
+        }
+        if self.config.runtime_enabled:
+            runtime_summary.update(
+                {
+                    "llm": {
+                        "provider": self.config.llm.provider,
+                        "model": self.config.llm.model,
+                    },
+                    "prompts": {
+                        "version": self.config.prompts.default_version,
+                        "count": len(self.runtime.runtime_refs["prompt_refs"]),
+                    },
+                    "mcp": {
+                        "enabled": self.config.mcp.enabled,
+                        "transport": self.config.mcp.transport,
+                        "refs": self.runtime.runtime_refs["mcp_call_refs"],
+                    },
+                    "memory": {
+                        "enabled": self.config.memory.enabled,
+                        "mode": self.config.memory.mode,
+                        "refs": self.runtime.runtime_refs["memory_refs"],
+                    },
+                    "llm_decisions": {
+                        "enabled": self.config.llm_decisions.enabled,
+                        "roles": self.config.llm_decisions.roles,
+                        "refs": self.runtime.runtime_refs["decision_refs"],
+                    },
+                    "message_log": str(
+                        self.runtime.run.path
+                        / "messages"
+                        / self.config.message_bus.log_filename
+                    )
+                    if self.runtime.bus
+                    else "",
+                    "token_usage": {"mode": "recorded-per-llm-artifact"},
+                }
+            )
+        report = ReportGenerator().build(
+            self.metadata,
+            [item.finding for item in active],
+            self.evidence_chains,
+            runtime=runtime_summary,
+            verification_candidates=[item.finding for item in self.decisions],
+        )
+        report_path = self.runtime.artifacts.write_json(
+            "reports", "report.json", report.to_dict(), task
+        )
+        markdown_path = self.runtime.artifacts.write_text(
+            "reports", "report.md", ReportGenerator().to_markdown(report), task
+        )
+        accepted = [item for item in self.decisions if item.decision == "accept"]
+        resources = build_run_resource_summary(
+            run_id=self.runtime.run.run_id,
+            run_dir=self.runtime.run.path,
+            metadata=self.metadata,
+            run_state=self.runtime.run_state,
+            config=self.config,
+            validation_results=self.validation_results,
+            status_counts=status_counts,
+            runtime_refs=self.runtime.runtime_refs,
+            terminal_status="succeeded",
+            tool_calls_used=self.runtime.tool_broker.runtime.budget.total_used,
+        )
+        resource_path = self.runtime.artifacts.write_json(
+            "reports", "run-resource-summary.v1.json", resources.to_dict(), task
+        )
+        self.summary = {
+            "run_dir": str(self.runtime.run.path),
+            "candidate_count": len(self.candidates),
+            "rejected_count": len([item for item in self.decisions if item.decision == "reject"]),
+            "validated_count": len(accepted),
+            **status_counts,
+            "validation_level_distribution": {
+                self.config.default_validation_level: len(accepted)
+            },
+            "runtime_state_ref": str(self.runtime.run.path / "runtime_state" / "state.json"),
+            "resource_summary_ref": resource_path,
+        }
+        return GraphNodeResult(
+            outputs={"report": report_path},
+            artifact_refs=[report_path, markdown_path, resource_path],
+        )
 
 
 def _runner_counts(validation_results) -> dict[str, int]:

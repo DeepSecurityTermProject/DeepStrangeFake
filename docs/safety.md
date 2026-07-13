@@ -3,6 +3,12 @@
 The system is designed for controlled local auditing of open-source projects.
 It must not be used to attack unauthorized live systems.
 
+## Adaptive Graph Safety
+
+Model output cannot author graph JSON, code, commands, callables, predicates, tools, or file paths. It can only select checkpoint-specific action names from a closed schema. The runtime translates these names into registered templates, evaluates mutations on a copy, validates reachability and aggregate budgets, persists required artifacts, and only then adopts a revision. Any failure leaves the previous graph active.
+
+The scheduler is single-threaded and local. Adaptive mode does not expand target scope, permit repository writes, enable network access, start Docker, or bypass ToolBroker and VerificationEngine policy. The optional real-model graph smoke is separately gated and restricted to local synthetic fixtures.
+
 ## Validation Levels
 
 - `static-only`: review local source and tool evidence without runtime actions.

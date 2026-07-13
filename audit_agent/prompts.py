@@ -71,6 +71,30 @@ POC_REPAIR_RESPONSE_SCHEMA: dict[str, Any] = {
     },
 }
 
+GRAPH_DECISION_ACTIONS = [
+    "gather-more-local-context",
+    "refine-static-scan",
+    "refine-evidence",
+    "repeat-analysis",
+    "route-verification",
+    "skip-optional",
+]
+
+GRAPH_DECISION_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["checkpoint_id", "next_actions", "rationale"],
+    "properties": {
+        "checkpoint_id": {"type": "string", "enum": ["post-recon", "post-analysis"]},
+        "next_actions": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {"type": "string", "enum": GRAPH_DECISION_ACTIONS},
+        },
+        "rationale": {"type": "string", "maxLength": 1000},
+    },
+}
+
 
 @dataclass
 class PromptTemplate:
@@ -155,6 +179,33 @@ def _builtin_templates() -> list[PromptTemplate]:
         "Do not request live-target exploitation.",
     ]
     return [
+        PromptTemplate(
+            template_id="orchestrator.graph-decision",
+            version="v1",
+            role="orchestrator",
+            required_variables=[
+                "checkpoint_id",
+                "completed_stage",
+                "available_actions",
+                "remaining_budgets",
+            ],
+            output_schema=GRAPH_DECISION_RESPONSE_SCHEMA,
+            safety_constraints=common_safety
+            + [
+                "Choose only actions explicitly listed in available_actions.",
+                "Do not emit commands, URLs, file writes, new templates, or executable content.",
+            ],
+            body=(
+                "You are the bounded graph decision agent at checkpoint {{checkpoint_id}}.\n"
+                "Completed local stage summary:\n{{completed_stage}}\n"
+                "Allowed actions:\n{{available_actions}}\n"
+                "Remaining budgets:\n{{remaining_budgets}}\n"
+                "Safety constraints:\n{{safety_constraints}}\n"
+                "Return only strict JSON. Minimal valid example:\n"
+                '{"checkpoint_id":"post-recon","next_actions":["gather-more-local-context"],'
+                '"rationale":"Collect one bounded local context refinement."}'
+            ),
+        ),
         PromptTemplate(
             template_id="orchestrator.plan",
             version="v1",

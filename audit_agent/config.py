@@ -148,6 +148,32 @@ class LlmDecisionRuntimeConfig:
 
 
 @dataclass
+class GraphRuntimeConfig:
+    mode: str = "deterministic-graph"
+    max_nodes: int = 64
+    max_scheduler_iterations: int = 256
+    max_node_attempts: int = 2
+    max_replans: int = 2
+    max_checkpoints: int = 2
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"legacy", "deterministic-graph", "adaptive-graph"}:
+            raise ValueError(
+                "graph.mode must be one of: legacy, deterministic-graph, adaptive-graph"
+            )
+        for name in (
+            "max_nodes",
+            "max_scheduler_iterations",
+            "max_node_attempts",
+            "max_replans",
+            "max_checkpoints",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"graph.{name} must be a non-negative integer")
+
+
+@dataclass
 class PoCRepairConfig:
     enabled: bool = False
     max_repair_attempts: int = 1
@@ -229,6 +255,7 @@ class AuditConfig:
     memory: MemoryRuntimeConfig = field(default_factory=MemoryRuntimeConfig)
     message_bus: MessageBusConfig = field(default_factory=MessageBusConfig)
     llm_decisions: LlmDecisionRuntimeConfig = field(default_factory=LlmDecisionRuntimeConfig)
+    graph: GraphRuntimeConfig = field(default_factory=GraphRuntimeConfig)
     poc_repair: PoCRepairConfig = field(default_factory=PoCRepairConfig)
     audit_scope: AuditScope = field(default_factory=AuditScope)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
@@ -272,6 +299,7 @@ class AuditConfig:
             memory=MemoryRuntimeConfig(**_known_kwargs(MemoryRuntimeConfig, data.get("memory", {}))),
             message_bus=MessageBusConfig(**_known_kwargs(MessageBusConfig, data.get("message_bus", {}))),
             llm_decisions=llm_decisions,
+            graph=GraphRuntimeConfig(**_known_kwargs(GraphRuntimeConfig, data.get("graph", {}))),
             poc_repair=poc_repair,
             audit_scope=AuditScope(**_known_kwargs(AuditScope, data.get("audit_scope", {}))),
             sandbox=SandboxConfig(**_known_kwargs(SandboxConfig, data.get("sandbox", {}))),

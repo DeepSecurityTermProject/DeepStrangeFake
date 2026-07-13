@@ -152,9 +152,33 @@ class ReportGenerator:
             f"- Rejected: {report.executive_summary.get('rejected_count', 0)}",
             f"- Manual required: {report.executive_summary.get('manual_required_count', 0)}",
             "",
-            "## Verification Evidence",
-            "",
         ]
+        graph = report.runtime.get("graph") if isinstance(report.runtime, dict) else None
+        if isinstance(graph, dict):
+            mutation_counts = graph.get("mutation_counts") or {}
+            path_summary = graph.get("execution_path_summary") or {}
+            artifact_refs = graph.get("artifact_refs") or {}
+            lines.extend(
+                [
+                    "## Execution Graph",
+                    "",
+                    f"- Mode: {graph.get('mode', 'unknown')}",
+                    f"- Schema: {graph.get('schema_version', 'unknown')}",
+                    f"- Template: {graph.get('template_id', 'unknown')}@{graph.get('template_version', 'unknown')}",
+                    f"- Revision: {graph.get('revision', 0)}",
+                    f"- Mutations: {mutation_counts.get('committed', 0)} committed, {mutation_counts.get('denied', 0)} denied",
+                    f"- Checkpoints: {graph.get('checkpoint_total', 0)}",
+                    f"- Replans: {graph.get('replan_count', 0)}",
+                    f"- Execution path nodes: {path_summary.get('node_count', 0)}",
+                    f"- Execution path: {', '.join(graph.get('execution_path') or [])}",
+                    f"- Fallback reason: {graph.get('fallback_reason') or 'none'}",
+                    f"- Initial graph: {artifact_refs.get('initial_graph_ref', '')}",
+                    f"- Final graph: {artifact_refs.get('final_graph_ref', '')}",
+                    f"- Replay: {artifact_refs.get('replay_ref', '')}",
+                    "",
+                ]
+            )
+        lines.extend(["## Verification Evidence", ""])
         for candidate in report.verification_candidates:
             validation = candidate.get("validation") or {}
             lines.extend(

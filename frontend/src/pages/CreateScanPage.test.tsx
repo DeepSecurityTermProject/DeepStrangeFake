@@ -31,6 +31,8 @@ describe("CreateScanPage", () => {
     vi.clearAllMocks();
     vi.mocked(apiClient.getOptions).mockResolvedValue({
       provider_modes: ["mock", "openai-compatible"],
+      graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
+      default_graph_mode: "deterministic-graph",
       memory_modes: ["lexical", "embedding", "off"],
       mcp_modes: ["on", "degraded", "off"],
       validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
@@ -81,6 +83,7 @@ describe("CreateScanPage", () => {
     expect(payload).toMatchObject({
       target: "fixtures/integration_smoke",
       runtime: true,
+      graph_mode: "deterministic-graph",
       llm_provider: "mock",
       llm_decisions: true,
       memory_mode: "lexical",

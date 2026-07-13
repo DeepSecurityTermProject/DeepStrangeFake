@@ -1,0 +1,7 @@
+{
+  "schema_version": "legacy-runtime-contract.v1",
+  "task_order": [["orchestrator", "agent"], ["analysis", "tool"], ["recon", "mcp-intelligence"], ["recon", "agent"], ["analysis", "agent"], ["verification", "agent"], ["validation", "service"], ["reporting", "service"]],
+  "summary_fields": ["candidate_count", "rejected_count", "validated_count", "runtime_state_ref"],
+  "artifact_categories": ["metadata", "tool_outputs", "agent_traces", "handoffs", "findings", "evidence", "reports", "runtime_state"],
+  "report_fields": ["target_metadata", "executive_summary", "findings", "evidence_chains", "runtime"]
+}

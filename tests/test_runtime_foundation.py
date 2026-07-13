@@ -27,6 +27,18 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(config.mcp.transport, "stdio")
         self.assertEqual(config.memory.mode, "lexical")
         self.assertTrue(config.message_bus.enabled)
+        self.assertEqual(config.graph.mode, "deterministic-graph")
+
+    def test_graph_runtime_mode_validates_and_serializes(self):
+        from audit_agent.config import GraphRuntimeConfig
+
+        for mode in ("legacy", "deterministic-graph", "adaptive-graph"):
+            config = AuditConfig.default()
+            config.graph = GraphRuntimeConfig(mode=mode)
+            self.assertEqual(config.to_dict()["graph"]["mode"], mode)
+
+        with self.assertRaisesRegex(ValueError, "graph.mode"):
+            GraphRuntimeConfig(mode="free-form-agents")
 
     def test_run_store_creates_runtime_artifact_directories(self):
         with tempfile.TemporaryDirectory() as tmp:

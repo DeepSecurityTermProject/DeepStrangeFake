@@ -80,6 +80,11 @@ class WebBackendApiTests(unittest.TestCase):
 
             self.assertEqual(options_response.status_code, 200)
             self.assertIn("mock", options["provider_modes"])
+            self.assertEqual(
+                options["graph_modes"],
+                ["legacy", "deterministic-graph", "adaptive-graph"],
+            )
+            self.assertIn(options["default_graph_mode"], options["graph_modes"])
             self.assertIn("lexical", options["memory_modes"])
             self.assertIn("off", options["mcp_modes"])
             self.assertIn("static-only", options["validation_levels"])
@@ -309,6 +314,7 @@ class WebBackendRunnerTests(unittest.TestCase):
         request = ScanRunRequest(
             target="fixtures/integration_smoke",
             runtime=True,
+            graph_mode="adaptive-graph",
             llm_provider="mock",
             model="deterministic-local",
             llm_decisions=True,
@@ -328,6 +334,7 @@ class WebBackendRunnerTests(unittest.TestCase):
         config = build_audit_config(request)
 
         self.assertTrue(config.runtime_enabled)
+        self.assertEqual(config.graph.mode, "adaptive-graph")
         self.assertEqual(config.llm.provider, "mock")
         self.assertEqual(config.llm.model, "deterministic-local")
         self.assertTrue(config.llm_decisions.enabled)

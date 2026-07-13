@@ -1,0 +1,40 @@
+{
+  "template_id": "orchestrator.graph-decision",
+  "version": "v1",
+  "role": "orchestrator",
+  "required_variables": [
+    "checkpoint_id",
+    "completed_stage",
+    "available_actions",
+    "remaining_budgets"
+  ],
+  "response": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["checkpoint_id", "next_actions", "rationale"],
+    "properties": {
+      "checkpoint_id": {"type": "string", "enum": ["post-recon", "post-analysis"]},
+      "next_actions": {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "type": "string",
+          "enum": [
+            "gather-more-local-context",
+            "refine-static-scan",
+            "refine-evidence",
+            "repeat-analysis",
+            "route-verification",
+            "skip-optional"
+          ]
+        }
+      },
+      "rationale": {"type": "string", "maxLength": 1000}
+    }
+  },
+  "minimal_valid_response": {
+    "checkpoint_id": "post-recon",
+    "next_actions": ["gather-more-local-context"],
+    "rationale": "Collect one bounded local context refinement."
+  }
+}

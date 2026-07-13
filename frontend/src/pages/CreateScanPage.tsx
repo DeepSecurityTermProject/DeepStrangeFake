@@ -3,10 +3,12 @@ import { Play, ShieldCheck } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
-import type { ApiOptions, McpMode, MemoryMode, SandboxRunner, ValidationLevel } from "../api/types";
+import type { ApiOptions, GraphMode, McpMode, MemoryMode, SandboxRunner, ValidationLevel } from "../api/types";
 
 const DEFAULT_OPTIONS: ApiOptions = {
   provider_modes: ["mock", "openai-compatible"],
+  graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
+  default_graph_mode: "deterministic-graph",
   memory_modes: ["lexical", "embedding", "off"],
   mcp_modes: ["on", "degraded", "off"],
   validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
@@ -34,6 +36,7 @@ export function CreateScanPage() {
   const navigate = useNavigate();
   const [target, setTarget] = useState("fixtures/integration_smoke");
   const [runtime, setRuntime] = useState(false);
+  const [graphMode, setGraphMode] = useState<GraphMode>(DEFAULT_OPTIONS.default_graph_mode);
   const [provider, setProvider] = useState("mock");
   const [model, setModel] = useState("");
   const [llmDecisions, setLlmDecisions] = useState(false);
@@ -84,6 +87,7 @@ export function CreateScanPage() {
     createRun.mutate({
       target: cleanTarget,
       runtime,
+      graph_mode: graphMode,
       llm_provider: providerMode,
       llm_decisions: llmDecisions,
       llm_decision_roles: llmDecisions ? selectedRoles : undefined,
@@ -129,6 +133,14 @@ export function CreateScanPage() {
         {targetError && <div className="form-error">{targetError}</div>}
 
         <div className="form-grid">
+          <label className="field">
+            <span>Graph mode</span>
+            <select value={graphMode} onChange={(event) => setGraphMode(event.target.value as GraphMode)}>
+              {options.graph_modes.map((mode) => (
+                <option key={mode} value={mode}>{mode}</option>
+              ))}
+            </select>
+          </label>
           <label className="check-row">
             <input id="runtime" type="checkbox" checked={runtime} onChange={(event) => setRuntime(event.target.checked)} />
             <span>Runtime</span>

@@ -478,3 +478,15 @@ whether a trace came from `tree-sitter` or the offline fallback. Current
 propagation is MVP-bounded and mostly language-frontend local. Python supports
 simple same-file helper return propagation, while deeper interprocedural and
 cross-file dataflow remain follow-up engine work.
+
+## Graph Runtime
+
+`deterministic-graph` is the default. Use `--graph-mode legacy` for rollback or `--graph-mode adaptive-graph` for guarded checkpoints. Graph artifacts are under the run's `graphs/` directory. Report JSON/Markdown and the Web run detail expose additive graph mode, revision, mutation/checkpoint counts, actual path, fallback reason, and artifact refs; older payloads without these fields remain readable.
+
+Adaptive execution is sequential, not parallel. A strict decision may only select a registered future-node action. Replan, checkpoint, node, token, tool, and sandbox budgets remain mandatory. Any malformed, unavailable, denied, invalid, over-budget, or unpersisted proposal falls back to the last committed graph.
+
+```powershell
+audit-agent scan --target fixtures/integration_smoke --graph-mode deterministic-graph
+audit-agent scan --target fixtures/integration_smoke --graph-mode adaptive-graph --runtime --llm-decisions --llm-decision-roles orchestrator --llm-provider mock
+audit-agent scan --target fixtures/integration_smoke --graph-mode legacy
+```

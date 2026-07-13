@@ -25,7 +25,8 @@ describe("RunDetailTabs", () => {
       <RunDetailTabs
         job={job}
         runtimeState={{
-          tasks: [{ id: "TSK-1", role: "analysis", kind: "agent", status: "succeeded", artifact_refs: ["a"], message_refs: ["m"] }]
+          graph_mode: "adaptive-graph",
+          tasks: [{ id: "TSK-1", role: "analysis", kind: "agent", status: "succeeded", graph_node_id: "analysis", graph_revision: 1, attempt: 1, artifact_refs: ["a"], message_refs: ["m"] }]
         }}
         replaySummary={{
           message_count: 3,
@@ -33,6 +34,15 @@ describe("RunDetailTabs", () => {
           runtime_lifecycle: { tool_calls: 1 }
         }}
         reportJson={{
+          runtime: {
+            graph: {
+              mode: "adaptive-graph",
+              revision: 1,
+              mutation_counts: { committed: 1, denied: 0 },
+              checkpoint_total: 1,
+              fallback_reason: ""
+            }
+          },
           findings: [
             {
               id: "F-1",
@@ -51,10 +61,12 @@ describe("RunDetailTabs", () => {
     );
 
     expect(screen.getByText(/validated/i)).toBeInTheDocument();
+    expect(screen.getByText("adaptive-graph")).toBeInTheDocument();
+    expect(screen.getByText(/1 committed/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /findings/i }));
     expect(screen.getByText(/potential sql injection/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /runtime tasks/i }));
-    expect(screen.getByText("analysis")).toBeInTheDocument();
+    expect(screen.getAllByText("analysis").length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole("tab", { name: /replay/i }));
     expect(screen.getByText(/message count/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /markdown report/i }));

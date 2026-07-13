@@ -54,6 +54,7 @@ export function RunDetailTabs({ job, runtimeState, replaySummary, reportJson, ma
 function SummaryTab({ job, reportJson }: { job: JobStatusResponse; reportJson?: AuditReport }) {
   const summary = job.summary ?? {};
   const reportSummary = reportJson?.executive_summary ?? {};
+  const graph = reportJson?.runtime?.graph;
   return (
     <div className="summary-grid">
       <Metric label="Status" value={<StatusBadge status={job.status} />} />
@@ -66,6 +67,11 @@ function SummaryTab({ job, reportJson }: { job: JobStatusResponse; reportJson?: 
       <Metric label="Likely" value={stringValue(valueFrom(summary, reportSummary, "likely_count"))} />
       <Metric label="Manual required" value={stringValue(valueFrom(summary, reportSummary, "manual_required_count"))} />
       <Metric label="Runtime state" value={stringValue(summary.runtime_state_ref)} />
+      {graph && <Metric label="Graph mode" value={stringValue(graph.mode)} />}
+      {graph && <Metric label="Graph revision" value={stringValue(graph.revision)} />}
+      {graph && <Metric label="Graph mutations" value={`${graph.mutation_counts?.committed ?? 0} committed / ${graph.mutation_counts?.denied ?? 0} denied`} />}
+      {graph && <Metric label="Graph checkpoints" value={stringValue(graph.checkpoint_total)} />}
+      {graph && <Metric label="Graph fallback" value={graph.fallback_reason || "none"} />}
       {job.error && <Metric label="Error" value={job.error} />}
     </div>
   );
@@ -155,6 +161,9 @@ function RuntimeTasksTab({ runtimeState }: { runtimeState?: RuntimeState }) {
         <thead>
           <tr>
             <th>ID</th>
+            <th>Graph node</th>
+            <th>Revision</th>
+            <th>Attempt</th>
             <th>Role</th>
             <th>Kind</th>
             <th>Status</th>
@@ -167,6 +176,9 @@ function RuntimeTasksTab({ runtimeState }: { runtimeState?: RuntimeState }) {
           {tasks.map((task, index) => (
             <tr key={task.id ?? `${task.role}-${index}`}>
               <td>{task.id ?? index + 1}</td>
+              <td>{task.graph_node_id ?? "n/a"}</td>
+              <td>{task.graph_revision ?? "n/a"}</td>
+              <td>{task.attempt ?? 0}</td>
               <td>{task.role}</td>
               <td>{task.kind}</td>
               <td>{task.status}</td>
