@@ -414,6 +414,7 @@ class DockerSandboxRunner:
     def __init__(self, config: AuditConfig, run_dir: str | Path):
         self.config = config
         self.run_dir = Path(run_dir)
+        self.starts_used = 0
 
     def run(self, poc: PoCArtifact | dict[str, Any], attempt_index: int = 1) -> SandboxRunResult:
         poc_data = _record_dict(poc)
@@ -478,7 +479,15 @@ class DockerSandboxRunner:
                 started_at=started_at,
                 finished_at=utc_now(),
             )
+            result.environment["docker_started"] = bool(policy_allowed)
             return _persist_sandbox_result(result, attempt_dir)
+
+        max_starts = getattr(self.config.sandbox, "max_starts", None)
+        if max_starts is not None and self.starts_used >= int(max_starts):
+            return result_for(
+                "policy-denied",
+                "Docker start budget exhausted.",
+            )
 
         if not _docker_binary_available(docker_binary):
             return result_for(
@@ -530,6 +539,7 @@ class DockerSandboxRunner:
             container_name=container_name,
             container_argv=normalized,
         )
+        self.starts_used += 1
         try:
             completed = subprocess.run(
                 docker_argv,

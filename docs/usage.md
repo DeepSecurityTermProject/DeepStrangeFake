@@ -342,6 +342,10 @@ the same interface, with lexical fallback when embeddings are unavailable.
 
 ## Benchmark
 
+For cache preparation, exact-lock review, offline/network modes, resume
+semantics, truth/adjudication identity, comparison rules, platform cleanup, and
+failure diagnosis, use the [Benchmark Operator Guide](benchmark-operator-guide.md).
+
 The default benchmark list is stored in `benchmarks/projects.json` and contains
 20 open-source projects, including OpenVPN and MacCMS v10.
 

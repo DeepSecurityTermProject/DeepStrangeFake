@@ -143,6 +143,8 @@ def _analyze_local_path(target: AuditTarget, path: Path, scope: AuditScope) -> R
 
 def _file_tree(root: Path, scope: AuditScope) -> Iterable[str]:
     gitignore_rules = _load_gitignore(root)
+    emitted_files = 0
+    emitted_bytes = 0
     for current, dirs, files in os.walk(root):
         dirs[:] = [dirname for dirname in dirs if dirname not in IGNORED_DIRS]
         for filename in sorted(files):
@@ -152,6 +154,16 @@ def _file_tree(root: Path, scope: AuditScope) -> Iterable[str]:
                 continue
             if not _included_by_scope(relative, scope, gitignore_rules):
                 continue
+            try:
+                size = full_path.stat().st_size
+            except OSError:
+                continue
+            if scope.max_files is not None and emitted_files >= scope.max_files:
+                return
+            if scope.max_bytes is not None and emitted_bytes + size > scope.max_bytes:
+                return
+            emitted_files += 1
+            emitted_bytes += size
             yield relative
 
 

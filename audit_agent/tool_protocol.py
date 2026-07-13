@@ -25,13 +25,18 @@ Handler = Callable[[dict[str, Any]], Any]
 class ToolBudget:
     per_agent: dict[str, int] = field(default_factory=dict)
     used: dict[str, int] = field(default_factory=dict)
+    total_limit: int | None = None
+    total_used: int = 0
 
     def consume(self, agent: str) -> bool:
+        if self.total_limit is not None and self.total_used >= self.total_limit:
+            return False
         limit = self.per_agent.get(agent)
         current = self.used.get(agent, 0)
         if limit is not None and current >= limit:
             return False
         self.used[agent] = current + 1
+        self.total_used += 1
         return True
 
 

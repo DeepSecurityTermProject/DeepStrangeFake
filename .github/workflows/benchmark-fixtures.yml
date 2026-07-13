@@ -1,0 +1,41 @@
+name: benchmark-fixtures
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      AUDIT_DISABLE_NETWORK: "1"
+      AUDIT_DISABLE_DOCKER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run benchmark unit acceptance
+        run: python -B -m unittest tests.test_benchmark_evaluation_pipeline -v
+      - name: Run local synthetic fixture corpus
+        run: >-
+          python -B -m audit_agent benchmark
+          --profile fixture
+          --benchmark-config benchmarks/corpus.v1.json
+          --truth benchmarks/truth.v1.json
+          --adjudications benchmarks/adjudications.v1.json
+          --output benchmark-ci-runs
+          --cache-root benchmark-ci-cache
+          --offline
+          --timeout 60
+      - name: Upload machine and human reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-benchmark
+          path: benchmark-ci-runs/**/benchmark.*
+          if-no-files-found: error

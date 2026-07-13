@@ -1,0 +1,21 @@
+{
+  "schema_version": "benchmark-truth.v1",
+  "truth_version": "1.0.0",
+  "records": [
+    {
+      "truth_id": "truth-sqli-vulnerable", "project_id": "fixture-paired", "case_id": "fixture-paired-vulnerable", "expected_presence": true, "vulnerability_class": "sql-injection", "path": "app.py",
+      "evidence_refs": ["benchmarks/fixtures/fixture-paired/vulnerable/app.py:6"], "source": "synthetic-reviewed-fixture", "reviewed_by": "fixture-maintainer", "reviewed_at": "2026-07-13T00:00:00+00:00",
+      "pair_id": "pair-fixture-sqli", "cwe": "CWE-89", "symbol": "find_user", "start_line": 6, "end_line": 7, "vulnerable_commit": "fixture:paired-vulnerable-v1", "fixed_commit": "fixture:paired-fixed-v1", "in_scope": true
+    },
+    {
+      "truth_id": "truth-sqli-fixed", "project_id": "fixture-paired", "case_id": "fixture-paired-fixed", "expected_presence": false, "vulnerability_class": "sql-injection", "path": "app.py",
+      "evidence_refs": ["benchmarks/fixtures/fixture-paired/fixed/app.py:6"], "source": "synthetic-reviewed-fixture", "reviewed_by": "fixture-maintainer", "reviewed_at": "2026-07-13T00:00:00+00:00",
+      "pair_id": "pair-fixture-sqli", "cwe": "CWE-89", "symbol": "find_user", "start_line": 6, "end_line": 6, "vulnerable_commit": "fixture:paired-vulnerable-v1", "fixed_commit": "fixture:paired-fixed-v1", "in_scope": true
+    },
+    {
+      "truth_id": "truth-safe-negative", "project_id": "fixture-safe-negative", "case_id": "fixture-safe-negative", "expected_presence": false, "vulnerability_class": "sql-injection", "path": "app.py",
+      "evidence_refs": ["benchmarks/fixtures/fixture-negative/app.py:2"], "source": "synthetic-reviewed-fixture", "reviewed_by": "fixture-maintainer", "reviewed_at": "2026-07-13T00:00:00+00:00",
+      "pair_id": null, "cwe": "CWE-89", "symbol": "find_user", "start_line": 2, "end_line": 2, "vulnerable_commit": null, "fixed_commit": "fixture:safe-negative-v1", "in_scope": true
+    }
+  ]
+}

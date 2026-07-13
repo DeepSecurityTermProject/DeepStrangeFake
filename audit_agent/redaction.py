@@ -62,6 +62,18 @@ def _redact(value: Any, secrets: list[str]) -> Any:
 
 def _is_secret_key(key: str) -> bool:
     lowered = key.lower().replace("-", "_")
+    if lowered in {
+        "llm_tokens",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "token_count",
+        "token_usage",
+        "max_tokens",
+        "secret_env_names",
+        "api_key_env_name",
+    }:
+        return False
     return any(fragment in lowered for fragment in SECRET_KEY_FRAGMENTS)
 
 

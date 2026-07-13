@@ -221,6 +221,37 @@ def build_llm_client(config: LlmConfig) -> LLMClient:
     raise LLMConfigurationError(f"Unsupported LLM provider: {config.provider}")
 
 
+class LLMBudgetExceeded(RuntimeError):
+    pass
+
+
+class BudgetedLLMClient:
+    def __init__(self, inner: LLMClient, *, request_budget: int, token_budget: int):
+        self.inner = inner
+        self.request_budget = max(0, int(request_budget))
+        self.token_budget = max(0, int(token_budget))
+        self.requests_used = 0
+        self.tokens_used = 0
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        if self.requests_used >= self.request_budget:
+            raise LLMBudgetExceeded("LLM request budget exhausted")
+        if self.tokens_used >= self.token_budget:
+            raise LLMBudgetExceeded("LLM token budget exhausted")
+        response = self.inner.complete(request)
+        total = response.usage.get("total_tokens")
+        if total is None:
+            total = int(response.usage.get("prompt_tokens") or 0) + int(
+                response.usage.get("completion_tokens") or 0
+            )
+        next_total = self.tokens_used + int(total or 0)
+        self.requests_used += 1
+        if next_total > self.token_budget:
+            raise LLMBudgetExceeded("LLM response exceeded token budget")
+        self.tokens_used = next_total
+        return response
+
+
 def validate_json_schema(value: Any, schema: dict[str, Any]) -> None:
     if not schema:
         return

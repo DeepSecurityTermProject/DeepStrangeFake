@@ -1,0 +1,74 @@
+name: benchmark-pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      corpus_lock:
+        description: Reviewed exact-commit pilot corpus path
+        required: true
+        default: benchmarks/pilot.lock.json
+      allow_network:
+        description: Allow approved Git acquisition
+        required: true
+        type: boolean
+        default: false
+      provider:
+        description: Explicit provider identity
+        required: true
+        default: mock
+      model:
+        description: Explicit model identity
+        required: true
+      docker:
+        description: Permit case-declared Docker validation
+        required: true
+        type: boolean
+        default: false
+      timeout_seconds:
+        description: Per-case timeout
+        required: true
+        default: "600"
+
+permissions:
+  contents: read
+
+jobs:
+  reviewed-pilot:
+    environment: benchmark-pilot-approved
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate approved pilot readiness
+        run: >-
+          python -B -m audit_agent benchmark
+          --benchmark-config "${{ inputs.corpus_lock }}"
+          --profile pilot
+          --readiness
+      - name: Run reviewed pilot
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          AUDIT_AGENT_LLM_API_KEY_ENV: LLM_API_KEY
+          BENCHMARK_PROVIDER: ${{ inputs.provider }}
+          BENCHMARK_DOCKER_ALLOWED: ${{ inputs.docker }}
+        run: >-
+          python -B -m audit_agent benchmark
+          --benchmark-config "${{ inputs.corpus_lock }}"
+          --profile pilot
+          --output benchmark-pilot-runs
+          --cache-root benchmark-pilot-cache
+          --timeout "${{ inputs.timeout_seconds }}"
+          --provider "${{ inputs.provider }}"
+          --model "${{ inputs.model }}"
+          ${{ inputs.allow_network && '--allow-network' || '--offline' }}
+          ${{ inputs.docker && '--allow-docker' || '' }}
+      - name: Upload retained pilot repetitions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-pilot-${{ github.run_id }}
+          path: benchmark-pilot-runs/
+          if-no-files-found: error

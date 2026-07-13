@@ -2,11 +2,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
-from .benchmark import BenchmarkConfig, BenchmarkRunner
+from .benchmark import (
+    BenchmarkConfig,
+    BenchmarkRunner,
+    build_engine_identity,
+    compare_files,
+    default_corpus_path,
+    lock_manifest,
+    readiness_for_profile,
+    run_benchmark,
+)
+from .benchmark_evaluation import aggregate_repetitions, promotion_readiness
+from .benchmark_runtime import AtomicJsonStore, run_child_scan
 from .config import AuditConfig
-from .integration import run_integration_preflight, run_integration_smoke
+from .integration import load_integration_environment, run_integration_preflight, run_integration_smoke
 from .message_bus import replay_summary
 from .pipeline import run_audit
 
@@ -107,6 +119,34 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark = subparsers.add_parser("benchmark", help="Run a configured benchmark corpus.")
     benchmark.add_argument("--benchmark-config", default=None, help="Benchmark JSON file.")
     benchmark.add_argument("--output", default="runs", help="Run output directory.")
+    benchmark.add_argument("--profile", default="fixture", help="Corpus profile ID.")
+    benchmark.add_argument("--case", action="append", default=[], help="Select a case ID; repeatable.")
+    benchmark.add_argument("--cache-root", default=".benchmark-cache", help="Verified mirror/export cache root.")
+    network = benchmark.add_mutually_exclusive_group()
+    network.add_argument("--offline", action="store_true", default=True, help="Use local fixtures/cache only (default).")
+    network.add_argument("--allow-network", action="store_true", help="Explicitly allow policy-approved fixed-argv Git acquisition.")
+    benchmark.add_argument("--timeout", type=int, default=None, help="Upper bound for each selected case in seconds.")
+    benchmark.add_argument("--provider", default=None, help="Explicit benchmark LLM provider identity.")
+    benchmark.add_argument("--model", default=None, help="Explicit benchmark model identity.")
+    benchmark.add_argument("--allow-docker", action="store_true", help="Allow case-declared Docker use and exact-label cleanup.")
+    benchmark.add_argument("--resume", default=None, help="Resume a benchmark run ID.")
+    benchmark.add_argument("--allow-partial", action="store_true", help="Emit partial results without a failure exit code.")
+    benchmark.add_argument("--repetition", default=None, help="Real-model repetition ID retained as a comparison dimension.")
+    benchmark.add_argument("--truth", default=None, help="Ground-truth manifest path.")
+    benchmark.add_argument("--adjudications", default=None, help="Adjudication manifest path.")
+    benchmark.add_argument("--comparison-dimension", action="append", default=[], help="Declared comparison dimension.")
+    benchmark.add_argument("--compare", nargs=2, metavar=("BASELINE", "CANDIDATE"), help="Compare two benchmark JSON files.")
+    benchmark.add_argument("--comparison-output", default=None, help="Comparison JSON output path.")
+    benchmark.add_argument("--aggregate-repetitions", nargs="+", default=None, help="Compatible repetition benchmark JSON files.")
+    benchmark.add_argument("--promote", default=None, help="Validate and promote a benchmark JSON path.")
+    benchmark.add_argument("--baseline-output", default=None, help="Destination for an eligible promoted baseline.")
+    benchmark.add_argument("--readiness", action="store_true", help="Validate selected profile readiness only.")
+    benchmark.add_argument("--lock", action="store_true", help="Resolve a reviewed lock using --lock-resolutions.")
+    benchmark.add_argument("--lock-resolutions", default=None, help="JSON with resolver, resolutions, and review_refs.")
+    benchmark.add_argument("--lock-output", default=None, help="Resolved corpus lock output path.")
+
+    child = subparsers.add_parser("benchmark-child", help=argparse.SUPPRESS)
+    child.add_argument("--case-config", required=True, help=argparse.SUPPRESS)
 
     subparsers.add_parser("show-config", help="Print default or supplied configuration.")
     replay = subparsers.add_parser("replay", help="Replay or summarize a run message log.")
@@ -139,6 +179,72 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "benchmark":
+        corpus_path = Path(args.benchmark_config) if args.benchmark_config else default_corpus_path()
+        dimensions = args.comparison_dimension or ["engine"]
+        if args.compare:
+            comparison = compare_files(args.compare[0], args.compare[1], dimensions)
+            if args.comparison_output:
+                AtomicJsonStore.write(args.comparison_output, comparison)
+            print(json.dumps(comparison, ensure_ascii=False, indent=2))
+            return 0
+        if args.aggregate_repetitions:
+            reports = [json.loads(Path(path).read_text(encoding="utf-8")) for path in args.aggregate_repetitions]
+            aggregate = aggregate_repetitions(reports)
+            if args.comparison_output:
+                AtomicJsonStore.write(args.comparison_output, aggregate)
+            print(json.dumps(aggregate, ensure_ascii=False, indent=2))
+            return 0
+        if args.readiness:
+            readiness = readiness_for_profile(corpus_path, args.profile)
+            print(json.dumps(readiness, ensure_ascii=False, indent=2))
+            return 0 if readiness["ready"] else 2
+        if args.lock:
+            if not args.lock_resolutions or not args.lock_output:
+                parser.error("--lock requires --lock-resolutions and --lock-output")
+            lock_input = json.loads(Path(args.lock_resolutions).read_text(encoding="utf-8"))
+            locked = lock_manifest(
+                corpus_path,
+                args.lock_output,
+                resolver=str(lock_input.get("resolver") or ""),
+                resolutions=dict(lock_input.get("resolutions") or {}),
+                review_refs=dict(lock_input.get("review_refs") or {}),
+            )
+            print(json.dumps(locked, ensure_ascii=False, indent=2))
+            return 0
+        if args.promote:
+            report = json.loads(Path(args.promote).read_text(encoding="utf-8"))
+            readiness = promotion_readiness(report, profile_kind=args.profile)
+            if readiness["ready"] and args.baseline_output:
+                AtomicJsonStore.write(args.baseline_output, report)
+            print(json.dumps(readiness, ensure_ascii=False, indent=2))
+            return 0 if readiness["ready"] else 2
+        if corpus_path.name != "projects.json":
+            load_integration_environment(config, cwd=Path.cwd(), env=dict(os.environ))
+            identity = build_engine_identity(
+                prompt_version=config.prompts.default_version,
+                template_dir=config.prompts.template_dir,
+                provider=args.provider or config.llm.provider,
+                model=args.model or config.llm.model,
+                repetition=args.repetition,
+            )
+            report, exit_code = run_benchmark(
+                corpus_path=corpus_path,
+                profile_id=args.profile,
+                output_root=args.output,
+                cache_root=args.cache_root,
+                truth_path=args.truth or corpus_path.parent / "truth.v1.json",
+                adjudication_path=args.adjudications or corpus_path.parent / "adjudications.v1.json",
+                case_ids=args.case or None,
+                allow_network=bool(args.allow_network),
+                allow_docker=bool(args.allow_docker),
+                allow_partial=args.allow_partial,
+                resume_run_id=args.resume,
+                comparison_dimensions=dimensions,
+                engine_identity=identity,
+                timeout_seconds=args.timeout,
+            )
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return exit_code
         benchmark_config = (
             BenchmarkConfig.load(args.benchmark_config) if args.benchmark_config else BenchmarkConfig.load_default()
         )
@@ -156,7 +262,9 @@ def main(argv: list[str] | None = None) -> int:
 
         summary = runner.run(audit_target)
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
-        return 0
+        return 0 if summary.failed_projects == 0 else 2
+    if args.command == "benchmark-child":
+        return run_child_scan(args.case_config)
     if args.command == "replay":
         print(json.dumps(replay_summary(args.messages), ensure_ascii=False, indent=2))
         return 0

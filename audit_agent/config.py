@@ -29,6 +29,7 @@ class LlmConfig:
     retry_count: int = 2
     max_tokens: int = 4096
     token_budget: int = 200000
+    request_budget: int | None = None
     cost_budget_usd: float | None = None
 
 
@@ -178,6 +179,8 @@ class AuditScope:
     analysis_budget: int = 100
     tool_budget: int = 80
     cve_query_budget: int = 50
+    max_files: int | None = None
+    max_bytes: int | None = None
 
 
 @dataclass
@@ -197,6 +200,7 @@ class SandboxConfig:
     memory_limit: str = "256m"
     cpu_limit: str = "1"
     pids_limit: int = 128
+    max_starts: int | None = None
 
 
 @dataclass

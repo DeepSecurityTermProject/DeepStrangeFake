@@ -17,7 +17,7 @@ from .decisions import (
 )
 from .evidence import EvidenceBuilder
 from .intelligence import CveMcpAdapter, normalize_cve_mcp_output
-from .llm import build_llm_client, persist_llm_artifact, validate_json_schema
+from .llm import BudgetedLLMClient, build_llm_client, persist_llm_artifact, validate_json_schema
 from .mcp_client import CveMcpClient
 from .memory import LexicalMemoryStore, MemoryIndexer, persist_retrievals
 from .message_bus import MessageBus
@@ -26,6 +26,7 @@ from .prompts import persist_prompt, render_default_prompt
 from .redaction import redact_secrets
 from .reporting import ReportGenerator
 from .repository import analyze_target
+from .resource_summary import build_run_resource_summary
 from .storage import RunContext, RunStore, immutable_path
 from .tool_protocol import ToolBudget, ToolRuntime, build_default_tool_registry
 from .tools import PatternScanner
@@ -310,7 +311,10 @@ class ToolBroker:
         self.config = config
         self.artifacts = artifacts
         self.bus = bus
-        budget = ToolBudget(per_agent=config.llm_decisions.tool_budget_per_role or config.tools.per_agent_budgets)
+        budget = ToolBudget(
+            per_agent=config.llm_decisions.tool_budget_per_role or config.tools.per_agent_budgets,
+            total_limit=config.audit_scope.tool_budget,
+        )
         self.runtime = runtime or ToolRuntime(
             build_default_tool_registry(config),
             artifact_root=artifacts.run.path / "tool_outputs" / "broker",
@@ -446,6 +450,12 @@ class AgentRuntime:
         self.tool_broker = ToolBroker(config, self.artifacts, bus=self.bus)
         self.artifacts.write_json("metadata", "repository.json", metadata.to_dict())
         llm_client = build_llm_client(config.llm) if config.runtime_enabled else None
+        if llm_client and config.llm.request_budget is not None:
+            llm_client = BudgetedLLMClient(
+                llm_client,
+                request_budget=config.llm.request_budget,
+                token_budget=config.llm.token_budget,
+            )
 
         plan_task = self._start_task("orchestrator", "agent")
         plan_output = self._invoke_agent("orchestrator", plan_task, {"metadata": metadata})
@@ -922,7 +932,22 @@ class AgentRuntime:
         )
         report_path = self.artifacts.write_json("reports", "report.json", report.to_dict(), reporting_task)
         markdown_path = self.artifacts.write_text("reports", "report.md", ReportGenerator().to_markdown(report), reporting_task)
-        self._finish_task(reporting_task, output_refs=[report_path, markdown_path])
+        resource_summary = build_run_resource_summary(
+            run_id=self.run.run_id,
+            run_dir=self.run.path,
+            metadata=metadata,
+            run_state=self.run_state,
+            config=config,
+            validation_results=validation_results,
+            status_counts=status_counts,
+            runtime_refs=self.runtime_refs,
+            terminal_status="succeeded",
+            tool_calls_used=self.tool_broker.runtime.budget.total_used,
+        )
+        resource_summary_path = self.artifacts.write_json(
+            "reports", "run-resource-summary.v1.json", resource_summary.to_dict(), reporting_task
+        )
+        self._finish_task(reporting_task, output_refs=[report_path, markdown_path, resource_summary_path])
 
         summary = {
             "run_dir": str(self.run.path),
@@ -932,6 +957,7 @@ class AgentRuntime:
             **status_counts,
             "validation_level_distribution": {config.default_validation_level: len(accepted)},
             "runtime_state_ref": str(self.run.path / "runtime_state" / "state.json"),
+            "resource_summary_ref": resource_summary_path,
         }
         self.run_state.mark_succeeded(summary)
         self.artifacts.persist_state()

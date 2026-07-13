@@ -1,0 +1,44 @@
+{
+  "schema_version": "benchmark-corpus.v1",
+  "corpus_id": "deep-strange-fake-benchmark",
+  "corpus_version": "1.0.0",
+  "profiles": [
+    {"profile_id": "fixture", "kind": "fixture", "case_ids": ["fixture-paired-vulnerable", "fixture-paired-fixed", "fixture-safe-negative"], "defaults": {}, "promotion_status": "approved", "promotion_review_ref": "local-synthetic-fixture-review-v1", "max_parallel": 1},
+    {"profile_id": "pilot-placeholder", "kind": "pilot", "case_ids": ["pilot-project-1", "pilot-project-2", "pilot-project-3"], "defaults": {}, "promotion_status": "not-reviewed", "promotion_review_ref": null, "max_parallel": 1},
+    {"profile_id": "full-readiness", "kind": "full", "case_ids": [], "defaults": {}, "promotion_status": "not-reviewed", "promotion_review_ref": null, "max_parallel": 1}
+  ],
+  "cases": [
+    {
+      "case_id": "fixture-paired-vulnerable", "project_id": "fixture-paired", "source": "benchmarks/fixtures/fixture-paired/vulnerable", "commit": "fixture:paired-vulnerable-v1", "language": "Python", "variant": "vulnerable",
+      "scope": {"include": ["*.py", "**/*.py"], "exclude": [], "max_files": 20, "max_bytes": 100000},
+      "budgets": {"llm_requests": 0, "llm_tokens": 0, "tool_calls": 10, "docker_starts": 0, "repair_attempts": 0},
+      "timeout_seconds": 60, "validation_level": "static-only", "safety": {"network": false, "target_writes": false, "project_execution": false, "docker": false, "follow_external_links": false, "secret_env_names": []},
+      "truth_ref": "truth.v1.json#truth-sqli-vulnerable", "support_level": "full-dataflow", "effectiveness_eligible": true, "required": true, "pair_id": "pair-fixture-sqli", "vulnerability_classes": ["sql-injection"], "executable": true, "version": "vulnerable-v1", "support_reason": "deterministic Python dataflow fixture", "license_review_ref": "synthetic-owned-fixture"
+    },
+    {
+      "case_id": "fixture-paired-fixed", "project_id": "fixture-paired", "source": "benchmarks/fixtures/fixture-paired/fixed", "commit": "fixture:paired-fixed-v1", "language": "Python", "variant": "fixed",
+      "scope": {"include": ["*.py", "**/*.py"], "exclude": [], "max_files": 20, "max_bytes": 100000},
+      "budgets": {"llm_requests": 0, "llm_tokens": 0, "tool_calls": 10, "docker_starts": 0, "repair_attempts": 0},
+      "timeout_seconds": 60, "validation_level": "static-only", "safety": {"network": false, "target_writes": false, "project_execution": false, "docker": false, "follow_external_links": false, "secret_env_names": []},
+      "truth_ref": "truth.v1.json#truth-sqli-fixed", "support_level": "full-dataflow", "effectiveness_eligible": true, "required": true, "pair_id": "pair-fixture-sqli", "vulnerability_classes": ["sql-injection"], "executable": true, "version": "fixed-v1", "support_reason": "linked fixed control", "license_review_ref": "synthetic-owned-fixture"
+    },
+    {
+      "case_id": "fixture-safe-negative", "project_id": "fixture-safe-negative", "source": "benchmarks/fixtures/fixture-negative", "commit": "fixture:safe-negative-v1", "language": "Python", "variant": "safe-negative",
+      "scope": {"include": ["*.py", "**/*.py"], "exclude": [], "max_files": 20, "max_bytes": 100000},
+      "budgets": {"llm_requests": 0, "llm_tokens": 0, "tool_calls": 10, "docker_starts": 0, "repair_attempts": 0},
+      "timeout_seconds": 60, "validation_level": "static-only", "safety": {"network": false, "target_writes": false, "project_execution": false, "docker": false, "follow_external_links": false, "secret_env_names": []},
+      "truth_ref": "truth.v1.json#truth-safe-negative", "support_level": "full-dataflow", "effectiveness_eligible": true, "required": true, "pair_id": null, "vulnerability_classes": ["sql-injection"], "executable": true, "version": "negative-v1", "support_reason": "deterministic safe negative", "license_review_ref": "synthetic-owned-fixture"
+    },
+    {
+      "case_id": "pilot-project-1", "project_id": "pilot-project-1", "source": "https://github.com/placeholder/project-1.git", "commit": "unresolved", "language": "unknown", "variant": "placeholder", "scope": {"include": ["**/*"], "exclude": [], "max_files": 1000, "max_bytes": 10000000}, "budgets": {"llm_requests": 0, "llm_tokens": 0, "tool_calls": 0, "docker_starts": 0, "repair_attempts": 0}, "timeout_seconds": 300, "safety": {"network": false, "target_writes": false, "project_execution": false, "docker": false, "follow_external_links": false, "secret_env_names": []}, "truth_ref": null, "support_level": "unsupported", "effectiveness_eligible": false, "required": true, "pair_id": null, "vulnerability_classes": [], "executable": false, "version": "", "support_reason": "requires authorized selection, commit, license, scope, support, and truth review", "license_review_ref": null
+    },
+    {
+      "case_id": "pilot-project-2", "project_id": "pilot-project-2", "source": "https://github.com/placeholder/project-2.git", "commit": "unresolved", "language": "unknown", "variant": "placeholder", "scope": {"include": ["**/*"], "exclude": [], "max_files": 1000, "max_bytes": 10000000}, "budgets": {"llm_requests": 0, "llm_tokens": 0, "tool_calls": 0, "docker_starts": 0, "repair_attempts": 0}, "timeout_seconds": 300, "safety": {"network": false, "target_writes": false, "project_execution": false, "docker": false, "follow_external_links": false, "secret_env_names": []}, "truth_ref": null, "support_level": "unsupported", "effectiveness_eligible": false, "required": true, "pair_id": null, "vulnerability_classes": [], "executable": false, "version": "", "support_reason": "requires authorized selection, commit, license, scope, support, and truth review", "license_review_ref": null
+    },
+    {
+      "case_id": "pilot-project-3", "project_id": "pilot-project-3", "source": "https://github.com/placeholder/project-3.git", "commit": "unresolved", "language": "unknown", "variant": "placeholder", "scope": {"include": ["**/*"], "exclude": [], "max_files": 1000, "max_bytes": 10000000}, "budgets": {"llm_requests": 0, "llm_tokens": 0, "tool_calls": 0, "docker_starts": 0, "repair_attempts": 0}, "timeout_seconds": 300, "safety": {"network": false, "target_writes": false, "project_execution": false, "docker": false, "follow_external_links": false, "secret_env_names": []}, "truth_ref": null, "support_level": "unsupported", "effectiveness_eligible": false, "required": true, "pair_id": null, "vulnerability_classes": [], "executable": false, "version": "", "support_reason": "requires authorized selection, commit, license, scope, support, and truth review", "license_review_ref": null
+    }
+  ],
+  "generated_at": "2026-07-13T00:00:00+00:00",
+  "provenance": {"owner": "local-defensive-test", "network": false, "target_type": "synthetic-fixtures-only"}
+}
