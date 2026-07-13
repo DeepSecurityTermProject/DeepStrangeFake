@@ -112,3 +112,23 @@ work.
 - `openspec validate add-adaptive-agent-graph-runtime --strict` -> valid.
 - No network, Docker, MCP, destructive operation, target write, real provider,
   or real target was used.
+
+### Live graph-decision smoke correction
+
+- The official smoke now allows at most 8 provider requests and 50,000 tokens,
+  enough to reach both graph checkpoints while retaining explicit ceilings.
+- A smoke run cannot report `passed` when every checkpoint produced a
+  graph-decision fallback. Output reports prompt, successful-decision, fallback,
+  and fallback-reason counts separately.
+- Nested Analysis candidate fields are schema validated before conversion to a
+  Finding. Categorical confidence such as `"high"` and incomplete source
+  locations fail closed to the deterministic Analysis result instead of
+  terminating graph execution.
+- A bounded live run against `fixtures/integration_smoke` using the configured
+  `openai-compatible` provider completed both checkpoints without graph fallback,
+  committed revisions `0 -> 1 -> 2`, and produced two successful graph decisions.
+- Replay was complete with two committed mutations, no denied mutations, missing
+  refs, or inconsistencies. Target integrity was unchanged, Docker/MCP remained
+  disabled, and the configured API key did not appear in run artifacts.
+- Complete offline Python suite after the corrections: 239 tests passed, with 7
+  explicitly opt-in tests skipped.

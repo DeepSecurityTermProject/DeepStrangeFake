@@ -398,8 +398,8 @@ def _run_graph_decision_smoke(config: AuditConfig, args) -> int:
     config.graph.max_checkpoints = min(config.graph.max_checkpoints, 2)
     config.llm_decisions.enabled = True
     config.llm_decisions.roles = ["orchestrator"]
-    config.llm.request_budget = min(config.llm.request_budget or 2, 2)
-    config.llm.token_budget = min(config.llm.token_budget, 20_000)
+    config.llm.request_budget = min(config.llm.request_budget or 8, 8)
+    config.llm.token_budget = min(config.llm.token_budget, 50_000)
     config.memory.enabled = False
     config.mcp.enabled = False
     config.cve_mcp.enabled = False
@@ -408,7 +408,24 @@ def _run_graph_decision_smoke(config: AuditConfig, args) -> int:
     run_dir = Path(summary["run_dir"])
     state = json.loads((run_dir / "runtime_state" / "state.json").read_text(encoding="utf-8"))
     decision_artifacts = sorted(str(path) for path in (run_dir / "prompts").glob("*graph-decision*"))
-    status = "passed" if state.get("status") == "succeeded" and decision_artifacts else "failed"
+    decision_fallback_artifacts = sorted((run_dir / "runtime_errors").glob("graph-decision-*.json"))
+    decision_fallback_reasons = set()
+    for path in decision_fallback_artifacts:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            decision_fallback_reasons.add("unreadable-fallback-artifact")
+            continue
+        decision_fallback_reasons.add(str(payload.get("fallback_reason") or "unknown"))
+    successful_decision_count = max(
+        0,
+        len(decision_artifacts) - len(decision_fallback_artifacts),
+    )
+    status = (
+        "passed"
+        if state.get("status") == "succeeded" and successful_decision_count > 0
+        else "failed"
+    )
     print(
         json.dumps(
             {
@@ -417,6 +434,9 @@ def _run_graph_decision_smoke(config: AuditConfig, args) -> int:
                 "checkpoint_counts": state.get("checkpoint_counts", {}),
                 "graph_fallback_reason": state.get("graph_fallback_reason", ""),
                 "decision_artifact_count": len(decision_artifacts),
+                "successful_decision_count": successful_decision_count,
+                "decision_fallback_count": len(decision_fallback_artifacts),
+                "decision_fallback_reasons": sorted(decision_fallback_reasons),
                 "run_dir": str(run_dir),
             },
             ensure_ascii=False,

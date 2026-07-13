@@ -130,6 +130,8 @@ class RuntimeCliDocsTests(unittest.TestCase):
                 captured["model"] = config.llm.model
                 captured["api_key_env"] = config.llm.api_key_env
                 captured["api_key_visible"] = os.environ.get(config.llm.api_key_env)
+                captured["request_budget"] = config.llm.request_budget
+                captured["token_budget"] = config.llm.token_budget
                 (run_dir / "runtime_state").mkdir(parents=True)
                 (run_dir / "prompts").mkdir(parents=True)
                 (run_dir / "runtime_state" / "state.json").write_text(
@@ -170,7 +172,77 @@ class RuntimeCliDocsTests(unittest.TestCase):
         self.assertEqual(captured["model"], "synthetic-real-model")
         self.assertEqual(captured["api_key_env"], "LLM_API_KEY")
         self.assertEqual(captured["api_key_visible"], "synthetic-provider-key")
+        self.assertEqual(captured["request_budget"], 8)
+        self.assertEqual(captured["token_budget"], 50_000)
         self.assertNotIn("synthetic-provider-key", output.getvalue())
+
+    def test_graph_decision_smoke_fails_when_every_checkpoint_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "fixtures" / "integration_smoke"
+            target.mkdir(parents=True)
+            (root / ".env").write_text(
+                "AUDIT_AGENT_LLM_PROVIDER=openai-compatible\n"
+                "LLM_MODEL=synthetic-real-model\n"
+                "LLM_API_KEY=synthetic-provider-key\n",
+                encoding="utf-8",
+            )
+            run_dir = root / "fallback-run"
+
+            def fake_run_audit(target_path, config, output_dir):
+                (run_dir / "runtime_state").mkdir(parents=True)
+                (run_dir / "prompts").mkdir(parents=True)
+                (run_dir / "runtime_errors").mkdir(parents=True)
+                (run_dir / "runtime_state" / "state.json").write_text(
+                    json.dumps(
+                        {
+                            "status": "succeeded",
+                            "graph_mode": "adaptive-graph",
+                            "graph_fallback_reason": "model-decision-LLMBudgetExceeded",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                for checkpoint in ("post-recon", "post-analysis"):
+                    (run_dir / "prompts" / f"orchestrator-{checkpoint}-graph-decision.json").write_text(
+                        "{}",
+                        encoding="utf-8",
+                    )
+                    (run_dir / "runtime_errors" / f"graph-decision-{checkpoint}.json").write_text(
+                        json.dumps({"fallback_reason": "LLMBudgetExceeded"}),
+                        encoding="utf-8",
+                    )
+                return {"run_dir": str(run_dir)}
+
+            previous_cwd = Path.cwd()
+            output = io.StringIO()
+            try:
+                os.chdir(root)
+                with (
+                    patch.dict(os.environ, {"AUDIT_AGENT_RUN_GRAPH_SMOKE": "1"}, clear=True),
+                    patch("audit_agent.cli.run_audit", side_effect=fake_run_audit),
+                    redirect_stdout(output),
+                ):
+                    exit_code = main(
+                        [
+                            "graph-decision-smoke",
+                            "--live",
+                            "--target",
+                            str(target),
+                            "--output",
+                            str(root / "runs"),
+                        ]
+                    )
+            finally:
+                os.chdir(previous_cwd)
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["decision_artifact_count"], 2)
+        self.assertEqual(payload["successful_decision_count"], 0)
+        self.assertEqual(payload["decision_fallback_count"], 2)
+        self.assertEqual(payload["decision_fallback_reasons"], ["LLMBudgetExceeded"])
 
     def test_runtime_docs_exist_with_required_topics(self):
         docs = (Path("docs") / "usage.md").read_text(encoding="utf-8")

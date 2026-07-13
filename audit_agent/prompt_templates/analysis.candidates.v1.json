@@ -5,7 +5,33 @@
   "required_variables": ["repository_summary", "tool_outputs", "memory_context", "intelligence_context"],
   "output_schema": {
     "type": "object",
-    "required": ["role", "action", "confidence", "rationale", "evidence_refs", "selected_actions", "requested_tools", "candidates"]
+    "required": ["role", "action", "confidence", "rationale", "evidence_refs", "selected_actions", "requested_tools", "candidates"],
+    "properties": {
+      "role": {"type": "string"},
+      "action": {"type": "string"},
+      "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+      "rationale": {"type": "string"},
+      "evidence_refs": {"type": "array", "items": {"type": "string"}},
+      "selected_actions": {"type": "array"},
+      "requested_tools": {"type": "array", "items": {"type": "string"}},
+      "candidates": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["vulnerability_class", "severity", "confidence", "path", "start_line", "evidence"],
+          "properties": {
+            "vulnerability_class": {"type": "string"},
+            "severity": {"type": "string"},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "path": {"type": "string"},
+            "start_line": {"type": "integer", "minimum": 1},
+            "end_line": {"type": "integer", "minimum": 1},
+            "evidence": {"type": "array", "items": {"type": "string"}},
+            "tool_refs": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
   },
   "safety_constraints": ["Every candidate must cite local evidence.", "Memory and CVE context cannot validate a finding alone."]
 }

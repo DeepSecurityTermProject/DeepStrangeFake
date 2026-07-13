@@ -54,6 +54,41 @@ class LlmPromptRuntimeTests(unittest.TestCase):
         with self.assertRaises(LLMValidationError):
             validate_json_schema({"findings": []}, schema)
 
+    def test_analysis_schema_rejects_categorical_candidate_confidence(self):
+        prompt = render_default_prompt(
+            role="analysis",
+            template_id="analysis.candidates",
+            variables={
+                "repository_summary": {},
+                "tool_outputs": [],
+                "memory_context": [],
+                "intelligence_context": [],
+            },
+        )
+        payload = {
+            "role": "analysis",
+            "action": "review",
+            "confidence": 0.8,
+            "rationale": "Review local evidence.",
+            "evidence_refs": ["TR-local"],
+            "selected_actions": [],
+            "requested_tools": [],
+            "candidates": [
+                {
+                    "vulnerability_class": "sql-injection",
+                    "severity": "high",
+                    "confidence": "high",
+                    "path": "app.py",
+                    "start_line": 15,
+                    "end_line": 15,
+                    "evidence": ["cursor.execute(query)"],
+                }
+            ],
+        }
+
+        with self.assertRaises(LLMValidationError):
+            validate_json_schema(payload, prompt.output_schema)
+
     def test_prompt_registry_renders_versioned_template_and_validates_variables(self):
         registry = PromptRegistry()
         registry.register(

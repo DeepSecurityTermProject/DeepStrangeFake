@@ -256,10 +256,7 @@ def validate_json_schema(value: Any, schema: dict[str, Any]) -> None:
     if not schema:
         return
     expected_type = schema.get("type")
-    if expected_type == "object" and not isinstance(value, dict):
-        raise LLMValidationError("Expected JSON object")
-    if expected_type == "array" and not isinstance(value, list):
-        raise LLMValidationError("Expected JSON array")
+    _validate_type("value", value, expected_type)
     if isinstance(value, dict):
         for field in schema.get("required", []):
             if field not in value:
@@ -267,6 +264,15 @@ def validate_json_schema(value: Any, schema: dict[str, Any]) -> None:
         for name, prop_schema in schema.get("properties", {}).items():
             if name in value:
                 _validate_type(name, value[name], prop_schema.get("type"))
+                validate_json_schema(value[name], prop_schema)
+    if isinstance(value, list) and isinstance(schema.get("items"), dict):
+        for item in value:
+            validate_json_schema(item, schema["items"])
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            raise LLMValidationError(f"Field value must be at least {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            raise LLMValidationError(f"Field value must be at most {schema['maximum']}")
 
 
 def persist_llm_artifact(root: Path | str, request: LLMRequest, response: LLMResponse) -> Path:
@@ -292,6 +298,10 @@ def _validate_type(name: str, value: Any, expected: str | None) -> None:
         raise LLMValidationError(f"Field {name} must be an object")
     if expected == "string" and not isinstance(value, str):
         raise LLMValidationError(f"Field {name} must be a string")
+    if expected == "number" and (isinstance(value, bool) or not isinstance(value, (int, float))):
+        raise LLMValidationError(f"Field {name} must be a number")
+    if expected == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
+        raise LLMValidationError(f"Field {name} must be an integer")
 
 
 def _try_parse_json(text: str) -> Any:

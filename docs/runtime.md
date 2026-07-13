@@ -26,7 +26,7 @@ $env:AUDIT_AGENT_RUN_GRAPH_SMOKE = "1"
 audit-agent graph-decision-smoke --live --provider openai-compatible --model <configured-model>
 ```
 
-It accepts only a local path below `fixtures/`, disables MCP, memory, and sandbox execution, and caps provider requests and graph growth. Without every opt-in/configuration prerequisite it returns `status: skipped` without making a provider request.
+It accepts only a local path below `fixtures/`, disables MCP, memory, and sandbox execution, and caps provider usage at 8 requests and 50,000 tokens while preserving any lower configured limit. The command returns `passed` only when the run succeeds and at least one graph-decision checkpoint completes without a fallback; it reports successful and fallback decision counts separately. Without every opt-in/configuration prerequisite it returns `status: skipped` without making a provider request.
 
 ## Runtime Kernel
 
