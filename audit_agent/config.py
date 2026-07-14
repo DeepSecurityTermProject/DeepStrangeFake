@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -245,6 +246,61 @@ class OutputConfig:
 
 
 @dataclass
+class RemoteAcquisitionConfig:
+    enabled: bool = False
+    network_enabled: bool = False
+    allowed_hosts: list[str] = field(default_factory=lambda: ["github.com", "gitlab.com"])
+    cache_root: str = ".audit-cache/repositories"
+    work_root: str = ".audit-work/repositories"
+    command_timeout_seconds: int = 60
+    total_timeout_seconds: int = 180
+    lock_timeout_seconds: int = 30
+    max_mirror_bytes: int = 512 * 1024 * 1024
+    max_archive_members: int = 50_000
+    max_archive_bytes: int = 256 * 1024 * 1024
+    max_files: int = 25_000
+    max_bytes: int = 128 * 1024 * 1024
+    cleanup_retries: int = 3
+    cleanup_retry_delay_ms: int = 100
+
+    def __post_init__(self) -> None:
+        self.allowed_hosts = sorted({str(item).strip().lower() for item in self.allowed_hosts if str(item).strip()})
+        supported_hosts = {"github.com", "gitlab.com"}
+        if not self.allowed_hosts or not set(self.allowed_hosts).issubset(supported_hosts):
+            raise ValueError("remote acquisition permits only github.com and gitlab.com")
+        for name in (
+            "command_timeout_seconds", "total_timeout_seconds", "lock_timeout_seconds",
+            "max_mirror_bytes", "max_archive_members", "max_archive_bytes", "max_files",
+            "max_bytes", "cleanup_retries", "cleanup_retry_delay_ms",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"remote_acquisition.{name} must be a non-negative integer")
+        if self.command_timeout_seconds == 0 or self.total_timeout_seconds == 0:
+            raise ValueError("remote acquisition timeouts must be positive")
+
+    @classmethod
+    def from_environment(cls, env: dict[str, str] | None = None) -> "RemoteAcquisitionConfig":
+        values = env or os.environ
+        truthy = {"1", "true", "yes", "on"}
+        allowed_hosts = [
+            item.strip()
+            for item in values.get("AUDIT_REMOTE_ALLOWED_HOSTS", "github.com,gitlab.com").split(",")
+            if item.strip()
+        ]
+        return cls(
+            enabled=str(values.get("AUDIT_REMOTE_ACQUISITION_ENABLED", "")).lower() in truthy,
+            network_enabled=str(values.get("AUDIT_REMOTE_ACQUISITION_NETWORK", "")).lower() in truthy,
+            allowed_hosts=allowed_hosts,
+            cache_root=values.get("AUDIT_REMOTE_CACHE_ROOT", cls.cache_root),
+            work_root=values.get("AUDIT_REMOTE_WORK_ROOT", cls.work_root),
+            command_timeout_seconds=int(values.get("AUDIT_REMOTE_COMMAND_TIMEOUT", cls.command_timeout_seconds)),
+            total_timeout_seconds=int(values.get("AUDIT_REMOTE_TOTAL_TIMEOUT", cls.total_timeout_seconds)),
+            lock_timeout_seconds=int(values.get("AUDIT_REMOTE_LOCK_TIMEOUT", cls.lock_timeout_seconds)),
+        )
+
+
+@dataclass
 class AuditConfig:
     llm: LlmConfig = field(default_factory=LlmConfig)
     prompts: PromptRuntimeConfig = field(default_factory=PromptRuntimeConfig)
@@ -260,6 +316,7 @@ class AuditConfig:
     audit_scope: AuditScope = field(default_factory=AuditScope)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     tool_permissions: ToolPermissions = field(default_factory=ToolPermissions)
+    remote_acquisition: RemoteAcquisitionConfig = field(default_factory=RemoteAcquisitionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     validation_levels: list[str] = field(
         default_factory=lambda: ["static-only", "poc-generate", "sandbox", "manual"]
@@ -269,7 +326,9 @@ class AuditConfig:
 
     @classmethod
     def default(cls) -> "AuditConfig":
-        return cls()
+        return cls(
+            remote_acquisition=RemoteAcquisitionConfig.from_environment(),
+        )
 
     @classmethod
     def from_json(cls, path: str | Path) -> "AuditConfig":
@@ -304,6 +363,9 @@ class AuditConfig:
             audit_scope=AuditScope(**_known_kwargs(AuditScope, data.get("audit_scope", {}))),
             sandbox=SandboxConfig(**_known_kwargs(SandboxConfig, data.get("sandbox", {}))),
             tool_permissions=ToolPermissions(**_known_kwargs(ToolPermissions, data.get("tool_permissions", {}))),
+            remote_acquisition=RemoteAcquisitionConfig(
+                **_known_kwargs(RemoteAcquisitionConfig, data.get("remote_acquisition", {}))
+            ),
             output=OutputConfig(**_known_kwargs(OutputConfig, data.get("output", {}))),
             validation_levels=data.get(
                 "validation_levels", ["static-only", "poc-generate", "sandbox", "manual"]

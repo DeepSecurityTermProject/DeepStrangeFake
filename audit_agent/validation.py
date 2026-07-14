@@ -22,7 +22,7 @@ class Validator:
                 status="skipped",
                 message=f"Unsupported validation level requested: {selected}",
             )
-        if selected == "sandbox" and metadata.target.kind != "local":
+        if selected == "sandbox" and not _sandbox_materialization_allowed(self.config, metadata):
             return ValidationResult(
                 finding_id=finding.id or "",
                 level="manual",
@@ -84,7 +84,6 @@ class Validator:
             verification_reason="Safe automated validation is unavailable; manual reproduction steps are required.",
             message="Safe automated validation is unavailable; manual reproduction steps are required.",
         )
-
     def _write_poc(self, finding: Finding) -> Path:
         root = Path(tempfile.mkdtemp(prefix="audit-agent-poc-"))
         artifact = root / f"poc-{finding.id}.json"
@@ -97,3 +96,16 @@ class Validator:
         }
         artifact.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return artifact
+
+
+def _sandbox_materialization_allowed(config: AuditConfig, metadata: RepositoryMetadata) -> bool:
+    if metadata.target.kind == "local":
+        return True
+    return bool(
+        metadata.target.kind in {"github", "gitlab"}
+        and metadata.target.materialization == "verified-remote-snapshot"
+        and metadata.materialization.get("status") == "verified"
+        and str(config.sandbox.runner).lower() == "docker"
+        and str(config.sandbox.network).lower() == "none"
+        and not config.sandbox.allow_live_targets
+    )

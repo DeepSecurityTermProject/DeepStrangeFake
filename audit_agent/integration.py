@@ -211,6 +211,26 @@ def run_integration_smoke(
 
 
 def _apply_env_overrides(config: AuditConfig, env: dict[str, str]) -> None:
+    truthy = {"1", "true", "yes", "on"}
+    if "AUDIT_REMOTE_ACQUISITION_ENABLED" in env:
+        config.remote_acquisition.enabled = env["AUDIT_REMOTE_ACQUISITION_ENABLED"].lower() in truthy
+    if "AUDIT_REMOTE_ACQUISITION_NETWORK" in env:
+        config.remote_acquisition.network_enabled = env["AUDIT_REMOTE_ACQUISITION_NETWORK"].lower() in truthy
+    if "AUDIT_REMOTE_ALLOWED_HOSTS" in env:
+        config.remote_acquisition.allowed_hosts = [
+            item.strip() for item in env["AUDIT_REMOTE_ALLOWED_HOSTS"].split(",") if item.strip()
+        ]
+    if "AUDIT_REMOTE_CACHE_ROOT" in env:
+        config.remote_acquisition.cache_root = env["AUDIT_REMOTE_CACHE_ROOT"]
+    if "AUDIT_REMOTE_WORK_ROOT" in env:
+        config.remote_acquisition.work_root = env["AUDIT_REMOTE_WORK_ROOT"]
+    if "AUDIT_REMOTE_COMMAND_TIMEOUT" in env:
+        config.remote_acquisition.command_timeout_seconds = int(env["AUDIT_REMOTE_COMMAND_TIMEOUT"])
+    if "AUDIT_REMOTE_TOTAL_TIMEOUT" in env:
+        config.remote_acquisition.total_timeout_seconds = int(env["AUDIT_REMOTE_TOTAL_TIMEOUT"])
+    if "AUDIT_REMOTE_LOCK_TIMEOUT" in env:
+        config.remote_acquisition.lock_timeout_seconds = int(env["AUDIT_REMOTE_LOCK_TIMEOUT"])
+    config.remote_acquisition.__post_init__()
     config.llm.provider = env.get("AUDIT_AGENT_LLM_PROVIDER", config.llm.provider)
     config.llm.model = env.get("AUDIT_AGENT_LLM_MODEL", env.get("LLM_MODEL", config.llm.model))
     config.llm.base_url = env.get(

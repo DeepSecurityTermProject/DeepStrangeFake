@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "npm run typecheck && vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "dev": "vite --host 127.0.0.1 --configLoader runner",
+    "build": "npm run typecheck && vite build --configLoader runner",
+    "preview": "vite preview --host 127.0.0.1 --configLoader runner",
     "test": "vitest run --configLoader runner --pool=threads --maxWorkers=1 --no-file-parallelism",
     "test:smoke": "vitest run --configLoader runner --pool=threads --maxWorkers=1 --no-file-parallelism src/App.smoke.test.tsx",
     "typecheck": "tsc -p tsconfig.typecheck.json --incremental false"

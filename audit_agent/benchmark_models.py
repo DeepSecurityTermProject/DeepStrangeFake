@@ -341,6 +341,7 @@ class RunResourceSummary(StrictModel):
     docker_policy: dict[str, Any] = field(default_factory=dict)
     environment: dict[str, Any] = field(default_factory=dict)
     elapsed_seconds: float | None = None
+    acquisition: dict[str, Any] = field(default_factory=dict)
     generated_at: str = field(default_factory=utc_now)
 
     def validate(self) -> None:

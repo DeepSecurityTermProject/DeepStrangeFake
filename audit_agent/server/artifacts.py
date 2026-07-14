@@ -17,7 +17,25 @@ class ArtifactAccessDenied(PermissionError):
 
 
 def read_runtime_state(job: ScanJob) -> dict[str, Any]:
-    return _read_json(job, "runtime_state", "state.json")
+    if not job.run_dir:
+        raise ArtifactUnavailable("Job has no run directory yet.")
+    root = Path(job.run_dir).resolve()
+    state_root = (root / "runtime_state").resolve()
+    if root not in state_root.parents:
+        raise ArtifactAccessDenied("Runtime state path escapes job run directory.")
+    candidates = [path for path in state_root.glob("state*.json") if path.is_file()]
+    if not candidates:
+        raise ArtifactUnavailable("Artifact not found: runtime_state/state.json")
+    latest = max(candidates, key=lambda path: (_state_revision(path), path.stat().st_mtime_ns))
+    return json.loads(latest.read_text(encoding="utf-8"))
+
+
+def _state_revision(path: Path) -> int:
+    stem = path.stem
+    if stem == "state":
+        return 0
+    suffix = stem.removeprefix("state-")
+    return int(suffix) if suffix.isdigit() else -1
 
 
 def read_replay_summary(job: ScanJob) -> dict[str, Any]:

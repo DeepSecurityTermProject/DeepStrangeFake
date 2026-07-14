@@ -4,9 +4,14 @@ export type McpMode = "on" | "degraded" | "off";
 export type ValidationLevel = "static-only" | "poc-generate" | "sandbox" | "manual";
 export type SandboxRunner = "local" | "docker";
 export type GraphMode = "legacy" | "deterministic-graph" | "adaptive-graph";
+export type SourceSpec =
+  | { kind: "local"; path: string }
+  | { kind: "github"; url: string; commit?: string }
+  | { kind: "gitlab"; url: string; commit?: string };
 
 export interface ScanRunRequest {
-  target: string;
+  target?: string;
+  source?: SourceSpec;
   runtime?: boolean;
   graph_mode?: GraphMode;
   llm_provider?: string;
@@ -45,6 +50,13 @@ export interface JobStatusResponse {
   run_dir?: string | null;
   summary: Record<string, unknown>;
   error: string;
+  source?: SourceSpec | null;
+  phase?: string;
+  requested_revision?: string | null;
+  resolved_commit?: string | null;
+  acquisition_summary?: Record<string, unknown>;
+  acquisition_ref?: string | null;
+  cleanup_status?: string | null;
 }
 
 export interface JobListResponse {
@@ -69,6 +81,13 @@ export interface ApiOptions {
   poc_repair_effective_source?: string;
   poc_repair_requires_docker?: boolean;
   default_exclude_patterns: string[];
+  remote_acquisition?: {
+    enabled: boolean;
+    network_enabled: boolean;
+    allowed_hosts: string[];
+    supports_head: boolean;
+    limits: Record<string, number>;
+  };
 }
 
 export interface RuntimeTask {

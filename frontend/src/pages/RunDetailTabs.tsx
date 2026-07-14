@@ -59,6 +59,13 @@ function SummaryTab({ job, reportJson }: { job: JobStatusResponse; reportJson?: 
     <div className="summary-grid">
       <Metric label="Status" value={<StatusBadge status={job.status} />} />
       <Metric label="Target" value={job.target} />
+      <Metric label="Source kind" value={job.source?.kind ?? "legacy-local"} />
+      <Metric label="Phase" value={job.phase ?? "n/a"} />
+      <Metric label="Requested revision" value={job.requested_revision ?? "n/a"} />
+      <Metric label="Resolved commit" value={job.resolved_commit ?? "n/a"} />
+      <Metric label="Cache status" value={stringValue(job.acquisition_summary?.cache_status)} />
+      <Metric label="Network used" value={stringValue(job.acquisition_summary?.network_used)} />
+      <Metric label="Cleanup" value={job.cleanup_status ?? "n/a"} />
       <Metric label="Run directory" value={job.run_dir || job.output_dir} />
       <Metric label="Candidates" value={stringValue(summary.candidate_count)} />
       <Metric label="Rejected" value={stringValue(summary.rejected_count)} />

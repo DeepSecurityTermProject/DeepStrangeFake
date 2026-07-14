@@ -19,10 +19,26 @@ The scheduler is single-threaded and local. Adaptive mode does not expand target
 
 ## No-Live-Target Rule
 
-Sandbox validation is blocked for remote GitHub/GitLab targets unless the
-repository has been checked out and analyzed as a local path. Proof-of-concept
-artifacts are local evidence only and must not send traffic to third-party
-deployments.
+Remote acquisition is not live-target access. It is operator-disabled by
+default and accepts only canonical public GitHub or GitLab HTTPS repository
+sources on the configured host subset. A verified exact-commit snapshot is passive untrusted input: static
+analysis may read it, and sandbox validation may use it only with the Docker
+runner, `network=none`, a read-only target boundary, and no project setup,
+build, dependency installation, hooks, submodules, filters, or target writes.
+The local-process runner and all live/network target actions remain denied.
+Proof-of-concept artifacts are local evidence only and must not send traffic to
+third-party deployments.
+
+## Remote Repository Acquisition
+
+Git runs with argument arrays and `shell=False`, non-interactive credentials,
+disabled inherited Git configuration, HTTPS-only transport, redirects off,
+and LFS smudge disabled. Mirrors are keyed by normalized URL digest and exports
+use exact-commit `git archive`; the application never checks out or executes
+project-controlled content. Archive paths, entry types, member count, bytes,
+export scope, mirror size, command time, total time, and lock time are bounded.
+Acquisition failure, an empty effective scope, commit mismatch, or unverifiable
+cleanup is a failed scan rather than a successful zero-finding report.
 
 ## Command Safety
 

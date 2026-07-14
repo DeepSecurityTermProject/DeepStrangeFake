@@ -153,4 +153,110 @@ describe("CreateScanPage", () => {
       max_repair_attempts: 2
     });
   });
+
+  it("submits a bounded structured GitHub source", async () => {
+    vi.mocked(apiClient.getOptions).mockResolvedValue({
+      provider_modes: ["mock", "openai-compatible"],
+      graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
+      default_graph_mode: "deterministic-graph",
+      memory_modes: ["lexical", "embedding", "off"],
+      mcp_modes: ["on", "degraded", "off"],
+      validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
+      llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"],
+      sandbox_runners: ["local", "docker"],
+      default_docker_image: "python:3.12-slim",
+      default_docker_context: "",
+      default_docker_host: "",
+      default_exclude_patterns: [],
+      remote_acquisition: {
+        enabled: true,
+        network_enabled: false,
+        allowed_hosts: ["github.com", "gitlab.com"],
+        supports_head: false,
+        limits: {}
+      }
+    });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "GitHub" }));
+    await userEvent.type(screen.getByLabelText(/github repository url/i), "https://github.com/example/repo");
+    await userEvent.type(screen.getByLabelText(/exact commit/i), "a".repeat(40));
+    await userEvent.click(screen.getByRole("button", { name: /create scan/i }));
+    await waitFor(() => expect(apiClient.createRun).toHaveBeenCalled());
+    expect(vi.mocked(apiClient.createRun).mock.calls.at(-1)?.[0]).toMatchObject({
+      source: { kind: "github", url: "https://github.com/example/repo", commit: "a".repeat(40) }
+    });
+  });
+
+  it("submits a GitLab nested namespace with an exact commit", async () => {
+    vi.mocked(apiClient.getOptions).mockResolvedValue({
+      provider_modes: ["mock", "openai-compatible"],
+      graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
+      default_graph_mode: "deterministic-graph",
+      memory_modes: ["lexical", "embedding", "off"],
+      mcp_modes: ["on", "degraded", "off"],
+      validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
+      llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"],
+      sandbox_runners: ["local", "docker"],
+      default_docker_image: "python:3.12-slim",
+      default_docker_context: "",
+      default_docker_host: "",
+      default_exclude_patterns: [],
+      remote_acquisition: {
+        enabled: true,
+        network_enabled: false,
+        allowed_hosts: ["github.com", "gitlab.com"],
+        supports_head: false,
+        limits: {}
+      }
+    });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "GitLab" }));
+    await userEvent.type(
+      screen.getByLabelText(/gitlab repository url/i),
+      "https://gitlab.com/example/security/repo.git"
+    );
+    await userEvent.type(screen.getByLabelText(/exact commit/i), "b".repeat(40));
+    await userEvent.click(screen.getByRole("button", { name: /create scan/i }));
+    await waitFor(() => expect(apiClient.createRun).toHaveBeenCalled());
+    expect(vi.mocked(apiClient.createRun).mock.calls.at(-1)?.[0]).toMatchObject({
+      source: {
+        kind: "gitlab",
+        url: "https://gitlab.com/example/security/repo.git",
+        commit: "b".repeat(40)
+      }
+    });
+  });
+
+  it("requires an exact commit when backend HEAD resolution is disabled", async () => {
+    vi.mocked(apiClient.getOptions).mockResolvedValue({
+      provider_modes: ["mock", "openai-compatible"],
+      graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
+      default_graph_mode: "deterministic-graph",
+      memory_modes: ["lexical", "embedding", "off"],
+      mcp_modes: ["on", "degraded", "off"],
+      validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
+      llm_decision_roles: ["orchestrator", "recon", "analysis", "verification"],
+      sandbox_runners: ["local", "docker"],
+      default_docker_image: "python:3.12-slim",
+      default_docker_context: "",
+      default_docker_host: "",
+      default_exclude_patterns: [],
+      remote_acquisition: {
+        enabled: true,
+        network_enabled: false,
+        allowed_hosts: ["github.com", "gitlab.com"],
+        supports_head: false,
+        limits: {}
+      }
+    });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "GitHub" }));
+    await userEvent.type(
+      screen.getByLabelText(/github repository url/i),
+      "https://github.com/example/repo"
+    );
+    await userEvent.click(screen.getByRole("button", { name: /create scan/i }));
+    expect(await screen.findByText(/exact commit is required/i)).toBeInTheDocument();
+    expect(apiClient.createRun).not.toHaveBeenCalled();
+  });
 });

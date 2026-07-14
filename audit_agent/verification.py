@@ -915,7 +915,7 @@ class _LegacyVerificationEngine:
                     artifacts=_local_evidence_refs(finding),
                 ),
             )
-        if metadata.target.kind != "local":
+        if not _sandbox_materialization_allowed(self.config, metadata):
             return self._manual_required(finding, selected, "No-live-target policy blocked sandbox validation.")
         if not self.config.sandbox.enabled:
             return self._manual_required(finding, selected, "Sandbox validation requested but sandbox execution is disabled.")
@@ -1179,7 +1179,7 @@ class VerificationEngine(_LegacyVerificationEngine):
                 ),
                 None,
             )
-        if metadata.target.kind != "local":
+        if not _sandbox_materialization_allowed(self.config, metadata):
             return self._manual_required(finding, selected, "No-live-target policy blocked sandbox validation.")
         if not self.config.sandbox.enabled:
             return self._manual_required(
@@ -2584,6 +2584,19 @@ def _dedupe(values: list[Any]) -> list[str]:
         if text not in result:
             result.append(text)
     return result
+
+
+def _sandbox_materialization_allowed(config: AuditConfig, metadata: RepositoryMetadata) -> bool:
+    if metadata.target.kind == "local":
+        return True
+    return bool(
+        metadata.target.kind in {"github", "gitlab"}
+        and metadata.target.materialization == "verified-remote-snapshot"
+        and metadata.materialization.get("status") == "verified"
+        and str(config.sandbox.runner).lower() == "docker"
+        and str(config.sandbox.network).lower() == "none"
+        and not config.sandbox.allow_live_targets
+    )
 
 
 def _runner_secret_values(config: AuditConfig) -> list[str]:

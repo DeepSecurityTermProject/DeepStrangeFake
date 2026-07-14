@@ -143,6 +143,18 @@ def build_run_resource_summary(
             "benchmark_project_id": os.getenv("AUDIT_BENCHMARK_PROJECT_ID"),
         },
         elapsed_seconds=elapsed_seconds,
+        acquisition={
+            "source_kind": metadata.target.kind,
+            "requested_revision": metadata.target.requested_revision,
+            "resolved_commit": metadata.commit,
+            "status": metadata.materialization.get("status") if metadata.materialization else "local",
+            "acquisition_ref": metadata.target.acquisition_ref,
+            "exported_files": metadata.materialization.get("exported_files"),
+            "exported_bytes": metadata.materialization.get("exported_bytes"),
+            "cleanup_status": (
+                "pending" if metadata.target.kind in {"github", "gitlab"} else "not-required"
+            ),
+        },
     )
     summary.validate()
     return RunResourceSummary.from_dict(redact_secrets(summary.to_dict()))
@@ -175,6 +187,17 @@ def build_failed_run_resource_summary(*, run_id: str, target: str, error_reason:
         contributing_refs=[],
         environment={"platform": os.name},
         elapsed_seconds=None,
+        acquisition={
+            "status": "failed",
+            "failure_reason": error_reason,
+            "source_kind": (
+                "github"
+                if str(target).startswith("https://github.com/")
+                else "gitlab"
+                if str(target).startswith("https://gitlab.com/")
+                else "unknown"
+            ),
+        },
     )
 
 

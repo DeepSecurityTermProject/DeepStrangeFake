@@ -59,6 +59,9 @@ class AuditTarget:
     repo: str | None = None
     ref: str | None = None
     commit: str | None = None
+    requested_revision: str | None = None
+    materialization: str | None = None
+    acquisition_ref: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
@@ -101,6 +104,8 @@ class RepositoryMetadata:
     dependencies: list[Dependency] = field(default_factory=list)
     attack_surfaces: list[AttackSurface] = field(default_factory=list)
     generated_at: str = field(default_factory=utc_now)
+    source_provenance: dict[str, Any] = field(default_factory=dict)
+    materialization: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
@@ -989,6 +994,7 @@ class Report:
     evidence_chains: list[dict[str, Any]]
     verification_candidates: list[dict[str, Any]] = field(default_factory=list)
     runtime: dict[str, Any] = field(default_factory=dict)
+    acquisition: dict[str, Any] = field(default_factory=dict)
     run_status: str = "completed"
     generated_at: str = field(default_factory=utc_now)
 

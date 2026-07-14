@@ -38,6 +38,9 @@ class ReportGenerator:
         status_counts = verification_status_counts(candidate_items)
         summary = {
             "target": metadata.target.source,
+            "source_kind": metadata.target.kind,
+            "resolved_commit": metadata.commit,
+            "scanned_file_count": len(metadata.file_tree),
             "finding_count": len(report_findings),
             "verification_candidate_count": len(candidate_items),
             "validated_count": sum(1 for item in candidate_items if item.get("verifier_decision") == "accept"),
@@ -52,6 +55,12 @@ class ReportGenerator:
             verification_candidates=candidate_items,
             evidence_chains=[chain.to_dict() for chain in evidence_chains],
             runtime=runtime or {},
+            acquisition=_acquisition_summary(metadata),
+            run_status=(
+                "pending-cleanup"
+                if metadata.target.kind in {"github", "gitlab"}
+                else "completed"
+            ),
         )
 
     def _finding_item(
@@ -153,6 +162,20 @@ class ReportGenerator:
             f"- Manual required: {report.executive_summary.get('manual_required_count', 0)}",
             "",
         ]
+        if report.acquisition:
+            lines.extend(
+                [
+                    "## Repository Acquisition",
+                    "",
+                    f"- Source kind: {report.acquisition.get('source_kind', 'unknown')}",
+                    f"- Original source: {report.acquisition.get('original_source', '')}",
+                    f"- Requested revision: {report.acquisition.get('requested_revision', '')}",
+                    f"- Resolved commit: {report.acquisition.get('resolved_commit', '')}",
+                    f"- Scanned files: {len(report.acquisition.get('scanned_files') or [])}",
+                    f"- Cleanup: {report.acquisition.get('cleanup_status', 'pending')}",
+                    "",
+                ]
+            )
         graph = report.runtime.get("graph") if isinstance(report.runtime, dict) else None
         if isinstance(graph, dict):
             mutation_counts = graph.get("mutation_counts") or {}
@@ -318,6 +341,24 @@ class ReportGenerator:
                 lines.append(f"- Fallback: {finding['fallback_reason']}")
             lines.append("")
         return "\n".join(lines)
+
+
+def _acquisition_summary(metadata: RepositoryMetadata) -> dict[str, Any]:
+    if metadata.target.kind not in {"github", "gitlab"}:
+        return {}
+    provenance = metadata.source_provenance or {}
+    return {
+        "source_kind": metadata.target.kind,
+        "original_source": provenance.get("original_source") or metadata.target.source,
+        "normalized_source": provenance.get("normalized_source") or metadata.target.url,
+        "requested_revision": metadata.target.requested_revision,
+        "resolved_commit": metadata.commit,
+        "status": "ready",
+        "cleanup_status": "pending",
+        "scanned_files": list(metadata.file_tree),
+        "scanned_file_count": len(metadata.file_tree),
+        "acquisition_ref": metadata.target.acquisition_ref,
+    }
 
 
 def _intelligence_context(finding: Finding, chain: EvidenceChain | None) -> list[dict[str, Any]]:

@@ -32,7 +32,21 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     scan = subparsers.add_parser("scan", help="Audit one local directory or repository URL.")
-    scan.add_argument("--target", required=True, help="Local path, GitHub URL, or GitLab URL.")
+    scan.add_argument(
+        "--target",
+        required=True,
+        help="Local path or canonical public GitHub/GitLab HTTPS URL.",
+    )
+    scan.add_argument(
+        "--revision",
+        "--commit",
+        dest="revision",
+        default=None,
+        help=(
+            "Optional complete 40/64-character commit object ID for a remote source. "
+            "--commit remains a compatibility alias."
+        ),
+    )
     scan.add_argument("--output", default="runs", help="Run output directory.")
     scan.add_argument(
         "--graph-mode",
@@ -191,7 +205,8 @@ def main(argv: list[str] | None = None) -> int:
             config.validate_poc_repair_prerequisites()
         except ValueError as exc:
             parser.error(str(exc))
-        result = run_audit(args.target, config, args.output)
+        audit_kwargs = {"requested_revision": args.revision} if args.revision else {}
+        result = run_audit(args.target, config, args.output, **audit_kwargs)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "graph-decision-smoke":

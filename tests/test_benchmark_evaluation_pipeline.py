@@ -503,15 +503,20 @@ class BenchmarkPipelineTests(unittest.TestCase):
         _, cases = corpus.select("fixture")
         case = BenchmarkCase.from_dict({**cases[0].to_dict(), "source": "https://github.com/example/example.git", "commit": "a" * 40})
         calls = []
+        object_checks = 0
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
 
             def fake_git(argv, cwd, env, timeout):
+                nonlocal object_checks
                 calls.append(list(argv))
                 if argv[:3] == ["git", "clone", "--mirror"]:
                     Path(argv[-1]).mkdir(parents=True)
                 if "cat-file" in argv:
-                    return CommandResult(argv, 1, "", "missing")
+                    object_checks += 1
+                    if object_checks == 1:
+                        return CommandResult(argv, 1, "", "missing")
+                    return CommandResult(argv, 0, "", "")
                 if "rev-parse" in argv:
                     return CommandResult(argv, 0, case.commit + "\n", "")
                 if "archive" in argv:

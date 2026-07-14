@@ -33,6 +33,15 @@ Install the package dependencies, including the optional local web backend:
 .\.venv\Scripts\python.exe -m audit_agent scan --target D:\path\to\project --output runs
 ```
 
+For an operator-enabled public GitHub or GitLab source, pass the canonical HTTPS
+URL and an immutable revision. `--commit` remains a compatibility alias for
+`--revision`.
+
+```powershell
+.\.venv\Scripts\python.exe -m audit_agent scan --target https://github.com/owner/repository --revision 0123456789012345678901234567890123456789 --output runs
+.\.venv\Scripts\python.exe -m audit_agent scan --target https://gitlab.com/group/subgroup/repository --revision 0123456789012345678901234567890123456789 --output runs
+```
+
 The run directory contains metadata, tool outputs, intelligence artifacts,
 agent traces, handoffs, findings, evidence chains, proof-of-concept artifacts,
 JSON/Markdown reports, message logs, and `runtime_state/state.json`.
@@ -78,6 +87,66 @@ Invoke-RestMethod http://127.0.0.1:8000/api/runs/<job_id>/reports/report.md
 The backend is intentionally local-first. It does not accept API keys in HTTP
 requests, and report/runtime endpoints only read fixed files under the run
 directory associated with a known job.
+
+## Public GitHub and GitLab Repository Acquisition
+
+Remote acquisition is disabled by default. It requires system Git and explicit
+operator configuration; clients cannot enable network access in an API request.
+
+```dotenv
+AUDIT_REMOTE_ACQUISITION_ENABLED=true
+AUDIT_REMOTE_ACQUISITION_NETWORK=false
+AUDIT_REMOTE_ALLOWED_HOSTS=github.com,gitlab.com
+AUDIT_REMOTE_CACHE_ROOT=.audit-cache/repositories
+AUDIT_REMOTE_WORK_ROOT=.audit-work/repositories
+AUDIT_REMOTE_COMMAND_TIMEOUT=60
+AUDIT_REMOTE_TOTAL_TIMEOUT=180
+AUDIT_REMOTE_LOCK_TIMEOUT=30
+```
+
+Keep `AUDIT_REMOTE_ACQUISITION_NETWORK=false` for cache-only operation. Enable
+it only for an explicitly authorized acquisition window. Accepted sources are
+canonical public `https://github.com/<owner>/<repository>` and
+`https://gitlab.com/<namespace>/<repository>` URLs; GitLab namespaces may contain
+subgroups. SSH, arbitrary hosts, credentials, query/fragment components,
+branches, tags, redirects, submodules, project setup, dependency installation,
+and builds are rejected. Omit the revision to resolve remote `HEAD` only when
+network acquisition is enabled. Cache-only operation requires a complete 40/64
+character commit object ID already present in the verified mirror.
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/runs -ContentType "application/json" -Body '{
+  "source": {
+    "kind": "github",
+    "url": "https://github.com/owner/repository",
+    "commit": "0123456789012345678901234567890123456789"
+  },
+  "validation_level": "static-only"
+}'
+```
+
+For GitLab, set `"kind": "gitlab"` and use a canonical `gitlab.com` URL. The
+declared kind must match the URL host.
+
+The persistent mirror cache may remain after a run; each per-job export must be
+removed. Inspect `metadata/acquisition.json` and the final acquisition ref in
+the job summary before cleanup. Final `reports/report.json` retains the original
+URL, normalized URL, requested revision, resolved commit, scanned file list,
+findings/verification candidates, and cleanup status. To remove stale data,
+first resolve and verify
+that a specific child path is beneath the configured cache/work root, then
+delete only that exact child. Never use broad recursive deletion, wildcards, or
+container-wide cleanup commands.
+
+Stable failures include `remote-acquisition-disabled`,
+`source-policy-denied`, `revision-policy-denied`,
+`cache-miss-network-disabled`, `cache-origin-mismatch`, `commit-mismatch`,
+`git-timeout`, archive/export budget or containment failures,
+`empty-remote-scope`, and `cleanup-failed`. Windows antivirus or open handles
+may delay cleanup; close readers, inspect the recorded residual ref, retry the
+bounded exact workspace cleanup, and do not report the job as succeeded until
+absence is verified. On POSIX, inspect ownership and open file handles using
+the same exact contained path.
 
 ## Local Web Frontend
 

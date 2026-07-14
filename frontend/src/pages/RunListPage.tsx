@@ -41,7 +41,9 @@ export function RunListPage() {
             <thead>
               <tr>
                 <th>Status</th>
+                <th>Phase</th>
                 <th>Target</th>
+                <th>Resolved commit</th>
                 <th>Run directory</th>
                 <th>Validated</th>
                 <th>Created</th>
@@ -54,7 +56,9 @@ export function RunListPage() {
                   <td>
                     <StatusBadge status={job.status} />
                   </td>
-                  <td>{job.target}</td>
+                  <td>{job.phase || "n/a"}</td>
+                  <td className="source-value">{job.target}</td>
+                  <td className="source-value">{job.resolved_commit || "n/a"}</td>
                   <td>{job.run_dir || job.output_dir}</td>
                   <td>{String(job.summary?.validated_count ?? 0)}</td>
                   <td>{formatTime(job.created_at)}</td>

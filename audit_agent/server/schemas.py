@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,8 +16,30 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class LocalSource(StrictModel):
+    kind: Literal["local"]
+    path: str = Field(min_length=1)
+
+
+class GitHubSource(StrictModel):
+    kind: Literal["github"]
+    url: str = Field(min_length=1)
+    commit: str | None = None
+
+
+class GitLabSource(StrictModel):
+    kind: Literal["gitlab"]
+    url: str = Field(min_length=1)
+    commit: str | None = None
+
+
+RemoteSource = Union[GitHubSource, GitLabSource]
+SourceSpec = Annotated[Union[LocalSource, GitHubSource, GitLabSource], Field(discriminator="kind")]
+
+
 class ScanRunRequest(StrictModel):
-    target: str = Field(min_length=1)
+    target: str | None = Field(default=None, min_length=1)
+    source: SourceSpec | None = None
     runtime: bool = False
     graph_mode: GraphMode | None = None
     llm_provider: str | None = None
@@ -37,6 +59,28 @@ class ScanRunRequest(StrictModel):
     include_patterns: list[str] | None = None
     exclude_patterns: list[str] | None = None
     output: str | None = None
+
+    @model_validator(mode="after")
+    def normalize_source(self):
+        if self.target and self.source:
+            raise ValueError("provide either legacy target or structured source, not both")
+        if not self.target and self.source is None:
+            raise ValueError("target or source is required")
+        if self.source is None:
+            self.source = LocalSource(kind="local", path=str(self.target))
+        return self
+
+    @property
+    def display_target(self) -> str:
+        if isinstance(self.source, (GitHubSource, GitLabSource)):
+            return self.source.url
+        if isinstance(self.source, LocalSource):
+            return self.source.path
+        return str(self.target or "")
+
+    @property
+    def requested_revision(self) -> str | None:
+        return self.source.commit if isinstance(self.source, (GitHubSource, GitLabSource)) else None
 
     @model_validator(mode="after")
     def validate_poc_repair(self):
@@ -72,6 +116,13 @@ class JobStatusResponse(StrictModel):
     run_dir: str | None = None
     summary: dict = Field(default_factory=dict)
     error: str = ""
+    source: dict | None = None
+    phase: str = "queued"
+    requested_revision: str | None = None
+    resolved_commit: str | None = None
+    acquisition_summary: dict = Field(default_factory=dict)
+    acquisition_ref: str | None = None
+    cleanup_status: str | None = None
 
 
 class JobListResponse(StrictModel):

@@ -13,7 +13,13 @@ from typing import Callable
 from urllib.parse import urlsplit, urlunsplit
 
 from .benchmark_models import AcquisitionRecord, BenchmarkCase, contained_path
+from .config import RemoteAcquisitionConfig
 from .redaction import redact_text
+from .repository_acquisition import (
+    AcquisitionRequest as GenericAcquisitionRequest,
+    GitCommandResult,
+    RepositoryAcquisitionService,
+)
 
 
 DEFAULT_ALLOWED_HOSTS = {"github.com", "gitlab.com"}
@@ -76,6 +82,7 @@ class RepositoryAcquirer:
         self.allow_network = allow_network
         self.allowed_hosts = allowed_hosts or DEFAULT_ALLOWED_HOSTS
         self.command_runner = command_runner or run_command
+        self._custom_command_runner = command_runner is not None
         self.timeout_seconds = timeout_seconds
 
     def acquire(self, case: BenchmarkCase, destination: str | Path, *, profile_kind: str) -> AcquisitionRecord:
@@ -129,68 +136,80 @@ class RepositoryAcquirer:
         destination: Path,
         commands: list[list[str]],
     ) -> AcquisitionRecord:
-        self.cache_root.mkdir(parents=True, exist_ok=True)
-        mirror = contained_path(self.cache_root, "mirrors", f"{source_cache_key(identity)}.git")
-        mirror.parent.mkdir(parents=True, exist_ok=True)
-        if not mirror.exists():
-            if not self.allow_network:
-                return AcquisitionRecord(
-                    case_id=case.case_id,
-                    status="not-run",
-                    method="cache-only",
-                    source_identity=identity,
-                    expected_commit=case.commit,
-                    network_allowed=False,
-                    cache_status="miss",
-                    failure_reason="acquisition-cache-miss",
-                )
-            argv = ["git", "clone", "--mirror", "--filter=blob:none", "--", identity, str(mirror)]
-            self._checked(argv, None, commands)
-            cache_status = "cloned"
-        else:
-            cache_status = "hit"
-            origin = self._checked(["git", "-C", str(mirror), "remote", "get-url", "origin"], None, commands).stdout.strip()
-            if normalize_source_identity(origin, remote_profile=True, allowed_hosts=self.allowed_hosts) != identity:
-                raise ValueError("cached mirror remote identity mismatch")
-
-        object_check = ["git", "-C", str(mirror), "cat-file", "-e", f"{case.commit}^{{commit}}"]
-        result = self._run(object_check, None, commands)
-        if result.returncode != 0:
-            if not self.allow_network:
-                return AcquisitionRecord(
-                    case_id=case.case_id,
-                    status="not-run",
-                    method="cache-only",
-                    source_identity=identity,
-                    expected_commit=case.commit,
-                    network_allowed=False,
-                    cache_status="commit-miss",
-                    failure_reason="acquisition-cache-miss",
-                    commands=commands,
-                )
-            self._checked(["git", "-C", str(mirror), "fetch", "--no-tags", "--filter=blob:none", "origin", case.commit], None, commands)
-            cache_status = "fetched"
-        resolved = self._checked(["git", "-C", str(mirror), "rev-parse", f"{case.commit}^{{commit}}"], None, commands).stdout.strip()
-        if resolved.lower() != case.commit.lower():
-            raise ValueError("resolved commit does not match exact lock")
         if destination.exists():
             raise ValueError("case export destination already exists")
         destination.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=destination.parent, prefix=f".{destination.name}-") as temp_dir:
-            archive = Path(temp_dir) / "source.tar"
-            self._checked(["git", "-C", str(mirror), "archive", "--format=tar", "-o", str(archive), case.commit], None, commands)
-            extract_root = Path(temp_dir) / "source"
-            extract_root.mkdir()
-            self._safe_extract(archive, extract_root)
-            self._assert_safe_tree(extract_root)
-            os.replace(extract_root, destination)
+
+        config = RemoteAcquisitionConfig(
+            enabled=True,
+            network_enabled=self.allow_network,
+            allowed_hosts=sorted(self.allowed_hosts),
+            cache_root=str(contained_path(self.cache_root, "mirrors")),
+            work_root=str(destination.parent),
+            command_timeout_seconds=self.timeout_seconds,
+            total_timeout_seconds=max(self.timeout_seconds, self.timeout_seconds * 8),
+        )
+
+        def bridge(argv, cwd, env, timeout):
+            legacy_argv = _legacy_benchmark_argv(argv)
+            commands.append([redact_text(item) for item in legacy_argv])
+            invoked = legacy_argv if self._custom_command_runner else argv
+            raw = self.command_runner(invoked, cwd, env, timeout)
+            return GitCommandResult(
+                returncode=raw.returncode,
+                stdout=raw.stdout,
+                stderr=raw.stderr,
+                timed_out=raw.timed_out,
+            )
+
+        result = RepositoryAcquisitionService(config, command_runner=bridge).acquire(
+            GenericAcquisitionRequest(
+                source=identity,
+                job_id=f"benchmark-{case.case_id}",
+                requested_revision=case.commit,
+                cache_identity=identity,
+            )
+        )
+        if result.status != "ready" or not result.export_path or not result.resolved_commit:
+            if result.failure_reason in {
+                "cache-miss-network-disabled",
+                "commit-missing-network-disabled",
+            }:
+                return AcquisitionRecord(
+                    case_id=case.case_id,
+                    status="not-run",
+                    method="cache-only",
+                    source_identity=identity,
+                    expected_commit=case.commit,
+                    network_allowed=False,
+                    cache_status=(
+                        "commit-miss"
+                        if result.failure_reason == "commit-missing-network-disabled"
+                        else "miss"
+                    ),
+                    failure_reason="acquisition-cache-miss",
+                    commands=commands,
+                )
+            failure_detail = {
+                "cache-origin-mismatch": "cached mirror remote identity mismatch",
+                "commit-mismatch": "resolved commit does not match exact lock",
+            }.get(result.failure_reason or "", result.failure_reason or "acquisition-failed")
+            raise ValueError(failure_detail)
+
+        exported = Path(result.export_path)
+        os.replace(exported, destination)
+        cache_status = {
+            "created": "cloned",
+            "fetched": "fetched",
+            "hit": "hit",
+        }.get(result.cache_status, result.cache_status)
         return AcquisitionRecord(
             case_id=case.case_id,
             status="ready",
-            method="git-archive",
+            method=result.method,
             source_identity=identity,
             expected_commit=case.commit,
-            resolved_commit=resolved,
+            resolved_commit=result.resolved_commit,
             export_path=str(destination),
             network_allowed=self.allow_network,
             cache_status=cache_status,
@@ -284,3 +303,16 @@ def run_command(argv: list[str], cwd: Path | None, env: dict[str, str], timeout:
             stderr=redact_text(str(exc.stderr or ""))[:20_000],
             timed_out=True,
         )
+
+
+def _legacy_benchmark_argv(argv: list[str]) -> list[str]:
+    """Expose the pre-refactor benchmark command shape to injected test runners."""
+    if not argv:
+        return []
+    index = 1
+    while index + 1 < len(argv) and argv[index] == "-c":
+        index += 2
+    legacy = [argv[0], *argv[index:]]
+    if len(legacy) >= 6 and legacy[-3:] == ["config", "--get", "remote.origin.url"]:
+        legacy = [*legacy[:-3], "remote", "get-url", "origin"]
+    return legacy

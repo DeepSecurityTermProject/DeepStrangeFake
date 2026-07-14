@@ -44,6 +44,7 @@ from .prompts import persist_prompt, render_default_prompt
 from .redaction import redact_secrets, redact_text
 from .reporting import ReportGenerator
 from .repository import analyze_target
+from .repository_acquisition import PreparedAuditTarget
 from .resource_summary import build_run_resource_summary
 from .storage import RunContext, RunStore, immutable_path
 from .tool_protocol import ToolBudget, ToolRuntime, build_default_tool_registry
@@ -480,10 +481,12 @@ class AgentRuntime:
         config: AuditConfig | None = None,
         output_dir: str | Path = "runs",
         registry: AgentRegistry | None = None,
+        progress_callback=None,
     ):
         self.config = config or AuditConfig.default()
         self.output_dir = output_dir
         self.registry = registry or default_agent_registry(self.config)
+        self.progress_callback = progress_callback
         self.run: RunContext | None = None
         self.run_state: RunState | None = None
         self.artifacts: ArtifactStore | None = None
@@ -502,17 +505,31 @@ class AgentRuntime:
             "llm_lifecycle_refs": [],
         }
 
-    def run_audit(self, target: str) -> dict[str, Any]:
+    def _emit_phase(self, phase: str) -> None:
+        if self.progress_callback:
+            self.progress_callback(phase)
+
+    def run_audit(
+        self, target: str, prepared_target: PreparedAuditTarget | None = None
+    ) -> dict[str, Any]:
         if self.config.graph.mode != "legacy":
-            return self._run_graph_audit(target)
-        return self._run_legacy_audit(target)
+            return self._run_graph_audit(target, prepared_target)
+        return self._run_legacy_audit(target, prepared_target)
 
-    def _run_graph_audit(self, target: str) -> dict[str, Any]:
-        return _GraphAuditExecution(self, target).run()
+    def _run_graph_audit(
+        self, target: str, prepared_target: PreparedAuditTarget | None = None
+    ) -> dict[str, Any]:
+        return _GraphAuditExecution(self, target, prepared_target).run()
 
-    def _run_legacy_audit(self, target: str) -> dict[str, Any]:
+    def _run_legacy_audit(
+        self, target: str, prepared_target: PreparedAuditTarget | None = None
+    ) -> dict[str, Any]:
         config = self.config
-        metadata = analyze_target(target, audit_scope=config.audit_scope)
+        metadata = (
+            prepared_target.metadata
+            if prepared_target is not None
+            else analyze_target(target, audit_scope=config.audit_scope)
+        )
         store = RunStore(self.output_dir)
         self.run = store.create_run(metadata.target.repo or Path(metadata.target.path or target).name)
         self.run_state = RunState(
@@ -535,6 +552,11 @@ class AgentRuntime:
             secret_values=[os.environ.get(config.llm.api_key_env, "")],
         )
         self.tool_broker = ToolBroker(config, self.artifacts, bus=self.bus)
+        if prepared_target and prepared_target.acquisition:
+            acquisition_path = self.artifacts.write_json(
+                "metadata", "acquisition.json", prepared_target.acquisition.to_dict()
+            )
+            metadata.target.acquisition_ref = acquisition_path
         self.artifacts.write_json("metadata", "repository.json", metadata.to_dict())
         llm_client = self._build_audited_llm_client() if config.runtime_enabled else None
 
@@ -604,6 +626,7 @@ class AgentRuntime:
                 self._record_message(msg.message_id, memory_task)
             self._finish_task(memory_task, output_refs=[str(retrieval_path)])
 
+        self._emit_phase("scanning")
         scan_task = self._start_task("analysis", "tool")
         dataflow_result = self.tool_broker.dispatch("analysis", "dataflow-scan", {}, metadata=metadata, task_state=scan_task)
         dataflow_path = self.artifacts.write_json("tool_outputs", "dataflow-scan.json", dataflow_result.to_dict(), scan_task)
@@ -868,6 +891,7 @@ class AgentRuntime:
         self.artifacts.write_json("findings", "verification.json", [decision.to_dict() for decision in decisions], verification_task)
         self._finish_task(verification_task, output_refs=[decision.finding_id or "" for decision in decisions])
 
+        self._emit_phase("verifying")
         validation_task = self._start_task("validation", "service")
         verifier = VerificationEngine(
             config,
@@ -988,6 +1012,7 @@ class AgentRuntime:
                 },
             }
 
+        self._emit_phase("reporting")
         reporting_task = self._start_task("reporting", "service")
         if config.runtime_enabled and self.bus:
             msg = self.bus.publish(
@@ -1052,6 +1077,10 @@ class AgentRuntime:
             "validation_level_distribution": {config.default_validation_level: len(accepted)},
             "runtime_state_ref": str(self.run.path / "runtime_state" / "state.json"),
             "resource_summary_ref": resource_summary_path,
+            "source_kind": metadata.target.kind,
+            "requested_revision": metadata.target.requested_revision,
+            "resolved_commit": metadata.commit,
+            "acquisition_ref": metadata.target.acquisition_ref,
         }
         self.run_state.mark_succeeded(summary)
         self.artifacts.persist_state()
@@ -1402,10 +1431,16 @@ class AgentRuntime:
 class _GraphAuditExecution:
     """Graph-mode composition over the existing runtime service boundaries."""
 
-    def __init__(self, runtime: AgentRuntime, target: str) -> None:
+    def __init__(
+        self,
+        runtime: AgentRuntime,
+        target: str,
+        prepared_target: PreparedAuditTarget | None = None,
+    ) -> None:
         self.runtime = runtime
         self.config = runtime.config
         self.target = target
+        self.prepared_target = prepared_target
         self.metadata = None
         self.llm_client = None
         self.graph = None
@@ -1484,7 +1519,11 @@ class _GraphAuditExecution:
     def _initialize(self) -> None:
         runtime = self.runtime
         config = self.config
-        self.metadata = analyze_target(self.target, audit_scope=config.audit_scope)
+        self.metadata = (
+            self.prepared_target.metadata
+            if self.prepared_target is not None
+            else analyze_target(self.target, audit_scope=config.audit_scope)
+        )
         runtime.run = RunStore(runtime.output_dir).create_run(
             self.metadata.target.repo or Path(self.metadata.target.path or self.target).name
         )
@@ -1510,6 +1549,11 @@ class _GraphAuditExecution:
             secret_values=[os.environ.get(config.llm.api_key_env, "")],
         )
         runtime.tool_broker = ToolBroker(config, runtime.artifacts, bus=runtime.bus)
+        if self.prepared_target and self.prepared_target.acquisition:
+            acquisition_path = runtime.artifacts.write_json(
+                "metadata", "acquisition.json", self.prepared_target.acquisition.to_dict()
+            )
+            self.metadata.target.acquisition_ref = acquisition_path
         runtime.artifacts.write_json("metadata", "repository.json", self.metadata.to_dict())
         self.llm_client = runtime._build_audited_llm_client() if config.runtime_enabled else None
         budgets = GraphBudget(
@@ -1851,6 +1895,7 @@ class _GraphAuditExecution:
     def _tool_executor(self, tool_ref: str, node, inputs: dict[str, Any]) -> GraphNodeResult:
         if tool_ref != "static-scan":
             raise KeyError(f"graph tool template is not registered: {tool_ref}")
+        self.runtime._emit_phase("scanning")
         task = self._task_for(node)
         dataflow = self.runtime.tool_broker.dispatch(
             "analysis", "dataflow-scan", {}, metadata=self.metadata, task_state=task
@@ -2150,6 +2195,7 @@ class _GraphAuditExecution:
         self.graph.nodes = merged
 
     def _validation(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        self.runtime._emit_phase("verifying")
         task = self._task_for(node)
         verifier = VerificationEngine(
             self.config,
@@ -2215,6 +2261,7 @@ class _GraphAuditExecution:
         return GraphNodeResult(outputs={"evidence": self.evidence_chains}, artifact_refs=refs)
 
     def _report_finalization(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
+        self.runtime._emit_phase("reporting")
         task = self._task_for(node)
         status_counts = verification_status_counts(self.validation_results)
         active = [
@@ -2368,6 +2415,10 @@ class _GraphAuditExecution:
             },
             "runtime_state_ref": str(self.runtime.run.path / "runtime_state" / "state.json"),
             "resource_summary_ref": resource_path,
+            "source_kind": self.metadata.target.kind,
+            "requested_revision": self.metadata.target.requested_revision,
+            "resolved_commit": self.metadata.commit,
+            "acquisition_ref": self.metadata.target.acquisition_ref,
         }
         return GraphNodeResult(
             outputs={"report": report_path},

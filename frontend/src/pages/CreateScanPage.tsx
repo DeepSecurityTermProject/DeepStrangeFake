@@ -22,7 +22,14 @@ const DEFAULT_OPTIONS: ApiOptions = {
   max_repair_attempts_range: [0, 2],
   poc_repair_effective_source: "default",
   poc_repair_requires_docker: true,
-  default_exclude_patterns: ["tests/**", "test/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"]
+  default_exclude_patterns: ["tests/**", "test/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"],
+  remote_acquisition: {
+    enabled: false,
+    network_enabled: false,
+    allowed_hosts: ["github.com", "gitlab.com"],
+    supports_head: false,
+    limits: {}
+  }
 };
 
 function parsePatterns(value: string): string[] {
@@ -35,6 +42,9 @@ function parsePatterns(value: string): string[] {
 export function CreateScanPage() {
   const navigate = useNavigate();
   const [target, setTarget] = useState("fixtures/integration_smoke");
+  const [sourceMode, setSourceMode] = useState<"local" | "github" | "gitlab">("local");
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [remoteCommit, setRemoteCommit] = useState("");
   const [runtime, setRuntime] = useState(false);
   const [graphMode, setGraphMode] = useState<GraphMode>(DEFAULT_OPTIONS.default_graph_mode);
   const [provider, setProvider] = useState("mock");
@@ -65,6 +75,12 @@ export function CreateScanPage() {
   const selectedDockerHost = dockerHost.trim();
   const providerMode = provider === "mock" ? "mock" : "openai-compatible";
   const selectedRoles = useMemo(() => roles.filter(Boolean), [roles]);
+  const remoteHost = sourceMode === "gitlab" ? "gitlab.com" : "github.com";
+  const remoteSourceEnabled = Boolean(
+    sourceMode !== "local"
+      && options.remote_acquisition?.enabled
+      && options.remote_acquisition.allowed_hosts.includes(remoteHost)
+  );
 
   const createRun = useMutation({
     mutationFn: apiClient.createRun,
@@ -77,15 +93,48 @@ export function CreateScanPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const cleanTarget = target.trim();
+    createRun.reset();
+    const cleanTarget = sourceMode === "local" ? target.trim() : remoteUrl.trim();
     if (!cleanTarget) {
-      setTargetError("Target is required");
+      const providerName = sourceMode === "gitlab" ? "GitLab" : "GitHub";
+      setTargetError(sourceMode === "local" ? "Target is required" : `${providerName} URL is required`);
       return;
+    }
+    if (sourceMode !== "local") {
+      const providerName = sourceMode === "gitlab" ? "GitLab" : "GitHub";
+      if (!remoteSourceEnabled) {
+        setTargetError(`${providerName} acquisition is disabled by the backend operator`);
+        return;
+      }
+      const validUrl = sourceMode === "github"
+        ? /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/.test(cleanTarget)
+        : /^https:\/\/gitlab\.com\/(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+(?:\.git)?$/.test(cleanTarget);
+      if (!validUrl) {
+        setTargetError(`Use a canonical public ${providerName} HTTPS repository URL`);
+        return;
+      }
+      const commit = remoteCommit.trim();
+      if (commit && !/^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/.test(commit)) {
+        setTargetError("Commit must be a complete 40 or 64 character hexadecimal object ID");
+        return;
+      }
+      if (!commit && !options.remote_acquisition?.supports_head) {
+        setTargetError("An exact commit is required when remote HEAD resolution is disabled");
+        return;
+      }
     }
     setTargetError("");
     const requestedModel = providerMode === "mock" ? "" : model.trim();
     createRun.mutate({
-      target: cleanTarget,
+      ...(sourceMode === "local"
+        ? { target: cleanTarget }
+        : {
+            source: {
+              kind: sourceMode,
+              url: cleanTarget,
+              ...(remoteCommit.trim() ? { commit: remoteCommit.trim().toLowerCase() } : {})
+            }
+          }),
       runtime,
       graph_mode: graphMode,
       llm_provider: providerMode,
@@ -116,20 +165,54 @@ export function CreateScanPage() {
       <div className="page-heading">
         <div>
           <h1>Scan Console</h1>
-          <p>Local audit workflow</p>
+          <p>Repository audit workflow</p>
         </div>
         <ShieldCheck aria-hidden="true" />
       </div>
       <form className="scan-form" onSubmit={submit}>
-        <label className="field">
-          <span>Target</span>
-          <input
-            id="target"
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
-            aria-invalid={Boolean(targetError)}
-          />
-        </label>
+        <fieldset className="segmented-field">
+          <legend>Source</legend>
+          <div className="segmented" aria-label="Repository source">
+            <button type="button" className={sourceMode === "local" ? "active" : ""} onClick={() => setSourceMode("local")}>Local</button>
+            <button
+              type="button"
+              className={sourceMode === "github" ? "active" : ""}
+              onClick={() => setSourceMode("github")}
+              disabled={!options.remote_acquisition?.enabled || !options.remote_acquisition.allowed_hosts.includes("github.com")}
+              title={options.remote_acquisition?.enabled ? "" : "Disabled by backend policy"}
+            >GitHub</button>
+            <button
+              type="button"
+              className={sourceMode === "gitlab" ? "active" : ""}
+              onClick={() => setSourceMode("gitlab")}
+              disabled={!options.remote_acquisition?.enabled || !options.remote_acquisition.allowed_hosts.includes("gitlab.com")}
+              title={options.remote_acquisition?.enabled ? "" : "Disabled by backend policy"}
+            >GitLab</button>
+          </div>
+        </fieldset>
+        {sourceMode === "local" ? (
+          <label className="field">
+            <span>Target</span>
+            <input id="target" value={target} onChange={(event) => setTarget(event.target.value)} aria-invalid={Boolean(targetError)} />
+          </label>
+        ) : (
+          <div className="form-grid">
+            <label className="field">
+              <span>{sourceMode === "gitlab" ? "GitLab" : "GitHub"} repository URL</span>
+              <input
+                id="remote-url"
+                value={remoteUrl}
+                onChange={(event) => setRemoteUrl(event.target.value)}
+                aria-invalid={Boolean(targetError)}
+                placeholder={sourceMode === "gitlab" ? "https://gitlab.com/group/repository" : "https://github.com/owner/repository"}
+              />
+            </label>
+            <label className="field">
+              <span>Exact commit {options.remote_acquisition?.supports_head ? "(optional)" : "(required)"}</span>
+              <input id="remote-commit" value={remoteCommit} onChange={(event) => setRemoteCommit(event.target.value)} placeholder="40 or 64 hexadecimal characters" />
+            </label>
+          </div>
+        )}
         {targetError && <div className="form-error">{targetError}</div>}
 
         <div className="form-grid">
@@ -328,7 +411,7 @@ export function CreateScanPage() {
         </div>
 
         {createRun.error && <div className="form-error">{String(createRun.error)}</div>}
-        <button className="primary-action" type="submit" disabled={createRun.isPending}>
+        <button className="primary-action" type="submit" disabled={createRun.isPending || (sourceMode !== "local" && !remoteSourceEnabled)}>
           <Play size={18} aria-hidden="true" />
           Create scan
         </button>
