@@ -17,9 +17,17 @@ from audit_agent.agent_led_benchmark import (
     run_real_model_stability,
 )
 from audit_agent.config import AuditConfig
+from audit_agent.cli import build_parser
 
 
 class BlindspotCorpusTests(unittest.TestCase):
+    def test_live_promotion_commands_default_to_reasoning_model_timeout(self):
+        parser = build_parser()
+        blindspot = parser.parse_args(["agent-led-benchmark", "--live"])
+        stability = parser.parse_args(["agent-led-stability", "--live"])
+        self.assertEqual(blindspot.llm_timeout, 120)
+        self.assertEqual(stability.llm_timeout, 120)
+
     def test_manifest_has_reviewed_balanced_24_case_shape(self):
         manifest = load_blindspot_manifest(default_blindspot_manifest_path())
         self.assertEqual(len(manifest["cases"]), 24)

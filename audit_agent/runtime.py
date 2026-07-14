@@ -1399,6 +1399,7 @@ class AgentRuntime:
         variables: dict[str, Any],
     ):
         prompt = render_default_prompt(role, template_id, variables, self.config.prompts)
+        original_trusted_prompt = prompt.rendered
         repair_limit = (
             int(self.config.llm_decisions.max_repair_attempts)
             if template_id in {"analysis.investigation", "verification.plan"}
@@ -1489,8 +1490,12 @@ class AgentRuntime:
                 rendered=(
                     "Repair the following JSON response so it exactly satisfies the supplied schema.\n"
                     "Preserve valid data, include every required field (including rationale), and return "
-                    "only the corrected JSON object. Do not add code, commands, paths, tools, verdicts, "
-                    "or any authority not already allowed by the schema.\n"
+                    "only the corrected JSON object. Use only repository paths, signal IDs, hypothesis IDs, "
+                    "actions, and facts present in the original trusted request context. If a malformed "
+                    "hypothesis cannot be repaired without inventing any of those values, remove that "
+                    "hypothesis; an empty hypotheses array is valid. Do not add code, commands, tools, "
+                    "verdicts, or any authority not already allowed by the schema and trusted context.\n"
+                    f"Original trusted request context:\n{original_trusted_prompt}\n"
                     f"Validation error:\n{schema_error}\n"
                     f"Invalid response:\n{json.dumps(invalid_payload, ensure_ascii=False)}\n"
                     f"Required JSON Schema:\n{json.dumps(prompt.output_schema, ensure_ascii=False)}"

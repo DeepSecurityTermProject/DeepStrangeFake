@@ -5,6 +5,7 @@ import hashlib
 import http.client
 import io
 import os
+import re
 import socket
 import threading
 import time
@@ -266,8 +267,19 @@ class OpenAICompatibleClient:
                 try:
                     self._check_cancelled()
                     raw = self._post_json(url, data, headers)
-                    text = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    message = raw.get("choices", [{}])[0].get("message", {})
+                    text = message.get("content", "")
+                    text = text if isinstance(text, str) else ""
                     parsed = _try_parse_json(text)
+                    if parsed is None and not text.strip() and request.response_schema:
+                        reasoning_payload = _try_parse_fenced_json(
+                            message.get("reasoning_content", "")
+                        )
+                        if reasoning_payload is not None:
+                            parsed = reasoning_payload
+                            # Promote only the schema-bound JSON value to response text;
+                            # never expose the provider's hidden reasoning as the answer.
+                            text = json.dumps(reasoning_payload, ensure_ascii=False)
                     result = LLMResponse(
                         request_id=request.id or "",
                         provider=self.config.provider,
@@ -277,7 +289,7 @@ class OpenAICompatibleClient:
                         usage=raw.get("usage", {}),
                         finish_reason=raw.get("choices", [{}])[0].get("finish_reason"),
                         latency_ms=int((time.monotonic() - started) * 1000),
-                        raw_response=raw,
+                        raw_response=_without_hidden_reasoning(raw),
                     )
                     if observer:
                         observer.attempt_response(attempt_id, result)
@@ -664,6 +676,33 @@ def _try_parse_json(text: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return None
+
+
+def _try_parse_fenced_json(text: Any) -> Any:
+    if not isinstance(text, str) or not text.strip():
+        return None
+    direct = _try_parse_json(text.strip())
+    if direct is not None:
+        return direct
+    blocks = re.findall(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.IGNORECASE | re.DOTALL)
+    for block in reversed(blocks):
+        parsed = _try_parse_json(block.strip())
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _without_hidden_reasoning(value: Any) -> Any:
+    hidden_fields = {"reasoning_content", "reasoning", "chain_of_thought"}
+    if isinstance(value, dict):
+        return {
+            key: _without_hidden_reasoning(nested)
+            for key, nested in value.items()
+            if str(key).lower() not in hidden_fields
+        }
+    if isinstance(value, list):
+        return [_without_hidden_reasoning(item) for item in value]
+    return value
 
 
 def _default_payload_for_role(role: str) -> dict[str, Any]:

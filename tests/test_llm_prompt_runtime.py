@@ -89,6 +89,24 @@ class LlmPromptRuntimeTests(unittest.TestCase):
         with self.assertRaises(LLMValidationError):
             validate_json_schema(payload, prompt.output_schema)
 
+    def test_investigation_prompt_explains_dual_evidence_before_gate_submission(self):
+        prompt = render_default_prompt(
+            role="analysis",
+            template_id="analysis.investigation",
+            variables={
+                "repository_summary": {"file_tree": ["app.py"]},
+                "bootstrap_source_context": [{"path": "app.py", "excerpt": "cursor.execute(query)"}],
+                "security_signals": [],
+                "hypothesis_state": [],
+                "tool_observations": [],
+                "remaining_budgets": {"requests": 10},
+                "allowed_actions": {"source_context": {}, "callers": {}, "submit_gate": {}},
+            },
+        )
+        self.assertIn("exact local source evidence", prompt.rendered)
+        self.assertIn("independent corroborator", prompt.rendered)
+        self.assertIn("does not prove it is unreachable", prompt.rendered)
+
     def test_prompt_registry_renders_versioned_template_and_validates_variables(self):
         registry = PromptRegistry()
         registry.register(
@@ -324,6 +342,64 @@ class LlmPromptRuntimeTests(unittest.TestCase):
         self.assertEqual(POC_REPAIR_RESPONSE_SCHEMA, first_format["json_schema"]["schema"])
         self.assertEqual({"type": "json_object"}, request_bodies[1]["response_format"])
         self.assertEqual("add_import", response.parsed_json["edits"][0]["op"])
+
+    def test_structured_response_recovers_fenced_json_when_provider_leaves_content_empty(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                body = {
+                    "model": "reasoning-model",
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "",
+                                "reasoning_content": (
+                                    "Internal analysis that must not become response text.\n"
+                                    "```json\n{\"candidates\": []}\n```"
+                                ),
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+                }
+                return json.dumps(body).encode("utf-8")
+
+        env_name = "AUDIT_AGENT_TEST_REASONING_KEY"
+        os.environ[env_name] = "test-key"
+        try:
+            client = OpenAICompatibleClient(
+                LlmConfig(
+                    provider="openai-compatible",
+                    model="reasoning-model",
+                    base_url="http://example.test/v1",
+                    api_key_env=env_name,
+                    response_format="json_object",
+                    retry_count=0,
+                )
+            )
+            request = LLMRequest(
+                role="analysis",
+                prompt="Return JSON.",
+                model="reasoning-model",
+                response_schema={"type": "object"},
+                response_format="auto",
+            )
+            with patch("urllib.request.urlopen", return_value=FakeResponse()):
+                response = client.complete(request)
+        finally:
+            os.environ.pop(env_name, None)
+
+        self.assertEqual(response.parsed_json, {"candidates": []})
+        self.assertEqual(json.loads(response.text), {"candidates": []})
+        self.assertNotIn("Internal analysis", response.text)
+        self.assertNotIn("reasoning_content", response.raw_response["choices"][0]["message"])
+        self.assertNotIn("Internal analysis", json.dumps(response.raw_response))
 
     def test_configured_json_object_bypasses_json_schema_probe(self):
         request_bodies = []

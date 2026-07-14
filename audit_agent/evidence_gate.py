@@ -225,7 +225,10 @@ class EvidenceGate:
         material = f"{item.excerpt} {item.message}".lower()
         if vulnerability_class == "sql-injection":
             return bool(
-                re.search(r"execute\s*\([^,]+,\s*(?:\(|\[|\{|[a-z_])", material)
+                re.search(
+                    r"execute\s*\(\s*[^,\r\n()]+,\s*(?:\(|\[|\{|[a-z_])",
+                    material,
+                )
                 or "parameterized" in material
                 or "sanitized-flow" in material
             )

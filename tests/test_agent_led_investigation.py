@@ -357,6 +357,69 @@ class EvidenceGateTests(unittest.TestCase):
         hypothesis.evidence = [local, counter]
         self.assertEqual(EvidenceGate(view).evaluate(hypothesis).decision.state, "rejected")
 
+    def test_sql_parameterization_counterevidence_does_not_match_across_source_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text(
+                "def run_query(name, cursor):\n"
+                "    query = \"SELECT id FROM users WHERE name = '\" + name + \"'\"\n"
+                "    return cursor.execute(query)\n"
+                "def handler(user_name, cursor):\n"
+                "    return run_query(user_name, cursor)\n",
+                encoding="utf-8",
+            )
+            view = RepositoryView(metadata_for(root, ["app.py"]))
+            local = view.source_evidence(
+                "app.py", 1, 3, context=2, origin="source", vulnerability_class="sql-injection"
+            )
+            corroboration = view.source_evidence(
+                "app.py", 5, origin="call-graph", vulnerability_class="sql-injection"
+            )
+            corroboration.raw["edge"] = {
+                "caller_id": "handler",
+                "callee_name": "run_query",
+                "path": "app.py",
+                "line": 5,
+            }
+            hypothesis = InvestigationHypothesis(
+                run_id="run",
+                vulnerability_class="sql-injection",
+                claim="user input reaches a dynamically concatenated query",
+                target_paths=["app.py"],
+                rationale="exact source and an independent call edge",
+                confidence=0.9,
+                state="evidence-gate",
+                evidence=[local, corroboration],
+                round_count=2,
+            )
+            result = EvidenceGate(view).evaluate(hypothesis)
+            self.assertEqual(result.decision.state, "promoted", result.decision.reasons)
+            self.assertEqual(result.decision.counterevidence_refs, [])
+
+            (root / "app.py").write_text(
+                "def run_query(name, cursor):\n"
+                "    return cursor.execute(\"SELECT id FROM users WHERE name = ?\", (name,))\n",
+                encoding="utf-8",
+            )
+            safe_view = RepositoryView(metadata_for(root, ["app.py"]))
+            safe_local = safe_view.source_evidence(
+                "app.py", 1, 2, origin="source", vulnerability_class="sql-injection"
+            )
+            safe_hypothesis = InvestigationHypothesis(
+                run_id="safe-run",
+                vulnerability_class="sql-injection",
+                claim="query may be injectable",
+                target_paths=["app.py"],
+                rationale="negative control",
+                confidence=0.7,
+                state="evidence-gate",
+                evidence=[safe_local],
+                round_count=1,
+            )
+            safe_result = EvidenceGate(safe_view).evaluate(safe_hypothesis)
+            self.assertEqual(safe_result.decision.state, "rejected")
+            self.assertTrue(safe_result.decision.counterevidence_refs)
+
 
 class VerificationPlanTests(unittest.TestCase):
     def test_secret_static_semantic_confirms_without_network(self):
@@ -1060,6 +1123,9 @@ class AgentLedEndToEndTests(unittest.TestCase):
             self.assertEqual(client.requests[0].metadata["schema_repair_attempt"], 0)
             self.assertEqual(client.requests[1].metadata["schema_repair_attempt"], 1)
             self.assertIn("Missing required field: rationale", client.requests[1].prompt)
+            self.assertIn("Original trusted request context", client.requests[1].prompt)
+            self.assertIn("settings.py", client.requests[1].prompt)
+            self.assertIn("remove that hypothesis", client.requests[1].prompt)
             lifecycle = [
                 json.loads(path.read_text(encoding="utf-8"))
                 for path in (Path(summary["run_dir"]) / "llm_attempts").glob("*/*.json")

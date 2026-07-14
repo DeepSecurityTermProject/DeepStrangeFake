@@ -484,6 +484,11 @@ def _builtin_templates() -> list[PromptTemplate]:
                 "next_action to request its first registered evidence action without an existing hypothesis_id. "
                 "Updates are only for hypothesis IDs already shown in Current hypothesis state. An update assessment is one of "
                 "investigating, supported, refuted, or inconclusive. next_action.action is one registered action. "
+                "Before submit_gate, gather both exact local source evidence and at least one independent corroborator "
+                "from call graph, dataflow, SAST, independent source, configuration, or manifest evidence. If a hypothesis "
+                "is in refine state, gather the missing evidence type before submitting it again. A repository-local "
+                "function with no discovered callers may still be an external entry point; absence of a local caller alone "
+                "does not prove it is unreachable and is not sufficient reason to abandon a source-supported hypothesis. "
                 "Do not include candidates, findings, source code, commands, or verdicts."
             ),
         ),

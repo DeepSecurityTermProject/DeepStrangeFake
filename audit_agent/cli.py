@@ -206,6 +206,12 @@ def build_parser() -> argparse.ArgumentParser:
     blindspots.add_argument("--runs-output", default="runs/agent-led-blindspots")
     blindspots.add_argument("--provider", default=None)
     blindspots.add_argument("--model", default=None)
+    blindspots.add_argument(
+        "--llm-timeout",
+        type=int,
+        default=120,
+        help="Per-attempt model timeout in seconds for the live promotion gate.",
+    )
     blindspots.add_argument("--live", action="store_true")
 
     stability = subparsers.add_parser(
@@ -216,6 +222,12 @@ def build_parser() -> argparse.ArgumentParser:
     stability.add_argument("--output", default="runs/agent-led-stability")
     stability.add_argument("--provider", default=None)
     stability.add_argument("--model", default=None)
+    stability.add_argument(
+        "--llm-timeout",
+        type=int,
+        default=120,
+        help="Per-attempt model timeout in seconds for the live promotion gate.",
+    )
     stability.add_argument("--live", action="store_true")
     return parser
 
@@ -248,6 +260,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.model:
             config.llm.model = args.model
         if args.live:
+            if args.llm_timeout <= 0:
+                parser.error("--llm-timeout must be positive")
+            config.llm.timeout_seconds = args.llm_timeout
             config.runtime_enabled = True
             config.graph.mode = "agent-led"
             config.llm_decisions.enabled = True
@@ -269,6 +284,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.model:
             config.llm.model = args.model
         if args.live:
+            if args.llm_timeout <= 0:
+                parser.error("--llm-timeout must be positive")
+            config.llm.timeout_seconds = args.llm_timeout
             config.runtime_enabled = True
             config.graph.mode = "agent-led"
             config.llm_decisions.enabled = True
