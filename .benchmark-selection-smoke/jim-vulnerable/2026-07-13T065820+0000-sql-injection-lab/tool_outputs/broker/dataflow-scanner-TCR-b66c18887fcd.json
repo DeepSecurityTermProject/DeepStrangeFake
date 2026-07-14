@@ -1,0 +1,474 @@
+{
+  "request_id": "TC-4d456cf7e54a",
+  "tool_name": "dataflow-scanner",
+  "success": true,
+  "status": "ok",
+  "message": "2 dataflow observations",
+  "observations": [
+    {
+      "tool_name": "dataflow-scanner",
+      "kind": "dataflow-complete-flow",
+      "message": "request.args.get('id', '1') reaches db.execute(query)",
+      "path": "python/vulnerable_app.py",
+      "line": 199,
+      "severity": "high",
+      "vulnerability_class": "sql-injection",
+      "evidence": "request.args.get('id', '1') -> db.execute(query)",
+      "success": true,
+      "degraded": false,
+      "raw": {
+        "dataflow_trace_id": "DFT-74796f4ccedb",
+        "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+        "dataflow_status": "complete-flow",
+        "dataflow_summary": {
+          "trace_id": "DFT-74796f4ccedb",
+          "status": "complete-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "python/vulnerable_app.py",
+            "line": 189,
+            "expression": "request.args.get('id', '1')",
+            "symbol": "request.args.get('id', '1')"
+          },
+          "sink": {
+            "path": "python/vulnerable_app.py",
+            "line": 199,
+            "expression": "db.execute(query)",
+            "symbol": "db.execute"
+          },
+          "sanitizer_status": "absent",
+          "sanitizers": [],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "confidence": 0.86,
+          "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json"
+        },
+        "call_path": [
+          "source:python/vulnerable_app.py:189:request.args.get('id', '1')",
+          "assignment:python/vulnerable_app.py:189:user_id = request.args.get('id', '1')",
+          "assignment:python/vulnerable_app.py:194:query = f'SELECT id, username, email, role, secret_note FROM users WHERE id = {user_id}'",
+          "sink:python/vulnerable_app.py:199:db.execute(query)"
+        ],
+        "dataflow_locations": [
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 189,
+            "end_line": 189,
+            "symbol": "request.args.get('id', '1')",
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 189,
+            "end_line": 189,
+            "symbol": null,
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 194,
+            "end_line": 194,
+            "symbol": null,
+            "snippet": "query = f\"SELECT id, username, email, role, secret_note FROM users WHERE id = {user_id}\""
+          },
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 199,
+            "end_line": 199,
+            "symbol": "db.execute",
+            "snippet": "cur = db.execute(query)"
+          }
+        ],
+        "rule_ids": [
+          "PY.SQL.RAW"
+        ],
+        "sanitizer_status": "absent",
+        "trace_artifact": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+        "trace_payload_stored_in_artifact": true,
+        "trace_inline_preview": {
+          "trace_id": "DFT-74796f4ccedb",
+          "status": "complete-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "python/vulnerable_app.py",
+            "line": 189,
+            "expression": "request.args.get('id', '1')",
+            "symbol": "request.args.get('id', '1')"
+          },
+          "sink": {
+            "path": "python/vulnerable_app.py",
+            "line": 199,
+            "expression": "db.execute(query)",
+            "symbol": "db.execute"
+          },
+          "sanitizer_status": "absent",
+          "sanitizers": [],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "confidence": 0.86,
+          "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json"
+        }
+      }
+    },
+    {
+      "tool_name": "dataflow-scanner",
+      "kind": "dataflow-complete-flow",
+      "message": "request.args.get('id', '1') reaches db.execute(query)",
+      "path": "python/vulnerable_app.py",
+      "line": 265,
+      "severity": "high",
+      "vulnerability_class": "sql-injection",
+      "evidence": "request.args.get('id', '1') -> db.execute(query)",
+      "success": true,
+      "degraded": false,
+      "raw": {
+        "dataflow_trace_id": "DFT-8a26dbb869be",
+        "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+        "dataflow_status": "complete-flow",
+        "dataflow_summary": {
+          "trace_id": "DFT-8a26dbb869be",
+          "status": "complete-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "python/vulnerable_app.py",
+            "line": 255,
+            "expression": "request.args.get('id', '1')",
+            "symbol": "request.args.get('id', '1')"
+          },
+          "sink": {
+            "path": "python/vulnerable_app.py",
+            "line": 265,
+            "expression": "db.execute(query)",
+            "symbol": "db.execute"
+          },
+          "sanitizer_status": "absent",
+          "sanitizers": [],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "confidence": 0.86,
+          "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json"
+        },
+        "call_path": [
+          "source:python/vulnerable_app.py:255:request.args.get('id', '1')",
+          "assignment:python/vulnerable_app.py:255:user_id = request.args.get('id', '1')",
+          "assignment:python/vulnerable_app.py:259:query = f'SELECT * FROM users WHERE id = {user_id}'",
+          "sink:python/vulnerable_app.py:265:db.execute(query)"
+        ],
+        "dataflow_locations": [
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 255,
+            "end_line": 255,
+            "symbol": "request.args.get('id', '1')",
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 255,
+            "end_line": 255,
+            "symbol": null,
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 259,
+            "end_line": 259,
+            "symbol": null,
+            "snippet": "query = f\"SELECT * FROM users WHERE id = {user_id}\""
+          },
+          {
+            "path": "python/vulnerable_app.py",
+            "start_line": 265,
+            "end_line": 265,
+            "symbol": "db.execute",
+            "snippet": "cur = db.execute(query)"
+          }
+        ],
+        "rule_ids": [
+          "PY.SQL.RAW"
+        ],
+        "sanitizer_status": "absent",
+        "trace_artifact": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+        "trace_payload_stored_in_artifact": true,
+        "trace_inline_preview": {
+          "trace_id": "DFT-8a26dbb869be",
+          "status": "complete-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "python/vulnerable_app.py",
+            "line": 255,
+            "expression": "request.args.get('id', '1')",
+            "symbol": "request.args.get('id', '1')"
+          },
+          "sink": {
+            "path": "python/vulnerable_app.py",
+            "line": 265,
+            "expression": "db.execute(query)",
+            "symbol": "db.execute"
+          },
+          "sanitizer_status": "absent",
+          "sanitizers": [],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "confidence": 0.86,
+          "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json"
+        }
+      }
+    }
+  ],
+  "output": {
+    "tool_name": "dataflow-scanner",
+    "inputs": {
+      "target": ".benchmark-selection/sql-injection-lab",
+      "file_count": 1,
+      "scanned_files": 1,
+      "max_files": 500,
+      "max_traces": 200
+    },
+    "success": true,
+    "exit_status": 0,
+    "duration_ms": 0,
+    "artifact_paths": [
+      ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+      ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json"
+    ],
+    "observations": [
+      {
+        "tool_name": "dataflow-scanner",
+        "kind": "dataflow-complete-flow",
+        "message": "request.args.get('id', '1') reaches db.execute(query)",
+        "path": "python/vulnerable_app.py",
+        "line": 199,
+        "severity": "high",
+        "vulnerability_class": "sql-injection",
+        "evidence": "request.args.get('id', '1') -> db.execute(query)",
+        "success": true,
+        "degraded": false,
+        "raw": {
+          "dataflow_trace_id": "DFT-74796f4ccedb",
+          "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+          "dataflow_status": "complete-flow",
+          "dataflow_summary": {
+            "trace_id": "DFT-74796f4ccedb",
+            "status": "complete-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "python/vulnerable_app.py",
+              "line": 189,
+              "expression": "request.args.get('id', '1')",
+              "symbol": "request.args.get('id', '1')"
+            },
+            "sink": {
+              "path": "python/vulnerable_app.py",
+              "line": 199,
+              "expression": "db.execute(query)",
+              "symbol": "db.execute"
+            },
+            "sanitizer_status": "absent",
+            "sanitizers": [],
+            "rule_ids": [
+              "PY.SQL.RAW"
+            ],
+            "confidence": 0.86,
+            "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json"
+          },
+          "call_path": [
+            "source:python/vulnerable_app.py:189:request.args.get('id', '1')",
+            "assignment:python/vulnerable_app.py:189:user_id = request.args.get('id', '1')",
+            "assignment:python/vulnerable_app.py:194:query = f'SELECT id, username, email, role, secret_note FROM users WHERE id = {user_id}'",
+            "sink:python/vulnerable_app.py:199:db.execute(query)"
+          ],
+          "dataflow_locations": [
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 189,
+              "end_line": 189,
+              "symbol": "request.args.get('id', '1')",
+              "snippet": "user_id = request.args.get('id', '1')"
+            },
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 189,
+              "end_line": 189,
+              "symbol": null,
+              "snippet": "user_id = request.args.get('id', '1')"
+            },
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 194,
+              "end_line": 194,
+              "symbol": null,
+              "snippet": "query = f\"SELECT id, username, email, role, secret_note FROM users WHERE id = {user_id}\""
+            },
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 199,
+              "end_line": 199,
+              "symbol": "db.execute",
+              "snippet": "cur = db.execute(query)"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "sanitizer_status": "absent",
+          "trace_artifact": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+          "trace_payload_stored_in_artifact": true,
+          "trace_inline_preview": {
+            "trace_id": "DFT-74796f4ccedb",
+            "status": "complete-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "python/vulnerable_app.py",
+              "line": 189,
+              "expression": "request.args.get('id', '1')",
+              "symbol": "request.args.get('id', '1')"
+            },
+            "sink": {
+              "path": "python/vulnerable_app.py",
+              "line": 199,
+              "expression": "db.execute(query)",
+              "symbol": "db.execute"
+            },
+            "sanitizer_status": "absent",
+            "sanitizers": [],
+            "rule_ids": [
+              "PY.SQL.RAW"
+            ],
+            "confidence": 0.86,
+            "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json"
+          }
+        }
+      },
+      {
+        "tool_name": "dataflow-scanner",
+        "kind": "dataflow-complete-flow",
+        "message": "request.args.get('id', '1') reaches db.execute(query)",
+        "path": "python/vulnerable_app.py",
+        "line": 265,
+        "severity": "high",
+        "vulnerability_class": "sql-injection",
+        "evidence": "request.args.get('id', '1') -> db.execute(query)",
+        "success": true,
+        "degraded": false,
+        "raw": {
+          "dataflow_trace_id": "DFT-8a26dbb869be",
+          "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+          "dataflow_status": "complete-flow",
+          "dataflow_summary": {
+            "trace_id": "DFT-8a26dbb869be",
+            "status": "complete-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "python/vulnerable_app.py",
+              "line": 255,
+              "expression": "request.args.get('id', '1')",
+              "symbol": "request.args.get('id', '1')"
+            },
+            "sink": {
+              "path": "python/vulnerable_app.py",
+              "line": 265,
+              "expression": "db.execute(query)",
+              "symbol": "db.execute"
+            },
+            "sanitizer_status": "absent",
+            "sanitizers": [],
+            "rule_ids": [
+              "PY.SQL.RAW"
+            ],
+            "confidence": 0.86,
+            "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json"
+          },
+          "call_path": [
+            "source:python/vulnerable_app.py:255:request.args.get('id', '1')",
+            "assignment:python/vulnerable_app.py:255:user_id = request.args.get('id', '1')",
+            "assignment:python/vulnerable_app.py:259:query = f'SELECT * FROM users WHERE id = {user_id}'",
+            "sink:python/vulnerable_app.py:265:db.execute(query)"
+          ],
+          "dataflow_locations": [
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 255,
+              "end_line": 255,
+              "symbol": "request.args.get('id', '1')",
+              "snippet": "user_id = request.args.get('id', '1')"
+            },
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 255,
+              "end_line": 255,
+              "symbol": null,
+              "snippet": "user_id = request.args.get('id', '1')"
+            },
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 259,
+              "end_line": 259,
+              "symbol": null,
+              "snippet": "query = f\"SELECT * FROM users WHERE id = {user_id}\""
+            },
+            {
+              "path": "python/vulnerable_app.py",
+              "start_line": 265,
+              "end_line": 265,
+              "symbol": "db.execute",
+              "snippet": "cur = db.execute(query)"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "sanitizer_status": "absent",
+          "trace_artifact": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+          "trace_payload_stored_in_artifact": true,
+          "trace_inline_preview": {
+            "trace_id": "DFT-8a26dbb869be",
+            "status": "complete-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "python/vulnerable_app.py",
+              "line": 255,
+              "expression": "request.args.get('id', '1')",
+              "symbol": "request.args.get('id', '1')"
+            },
+            "sink": {
+              "path": "python/vulnerable_app.py",
+              "line": 265,
+              "expression": "db.execute(query)",
+              "symbol": "db.execute"
+            },
+            "sanitizer_status": "absent",
+            "sanitizers": [],
+            "rule_ids": [
+              "PY.SQL.RAW"
+            ],
+            "confidence": 0.86,
+            "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json"
+          }
+        }
+      }
+    ],
+    "message": "2 dataflow observations",
+    "id": "TR-deb7ceed34e1"
+  },
+  "duration_ms": 0,
+  "artifact_paths": [
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json"
+  ],
+  "raw": {},
+  "created_at": "2026-07-13T06:58:20+00:00",
+  "id": "TCR-b66c18887fcd"
+}

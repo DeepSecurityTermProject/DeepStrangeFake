@@ -1,0 +1,204 @@
+{
+  "run_id": "2026-07-13T065823+0000-secure-file-locker",
+  "target": ".benchmark-selection/secure-file-locker",
+  "status": "succeeded",
+  "config_summary": {
+    "runtime_enabled": false,
+    "llm_provider": "mock",
+    "llm_decisions": false,
+    "poc_repair": false,
+    "poc_repair_source": "default"
+  },
+  "tasks": [
+    {
+      "run_id": "2026-07-13T065823+0000-secure-file-locker",
+      "role": "orchestrator",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\metadata\\plan.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\metadata\\plan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:23+00:00",
+      "finished_at": "2026-07-13T06:58:23+00:00",
+      "created_at": "2026-07-13T06:58:23+00:00",
+      "id": "TSK-6a64ba0cd591"
+    },
+    {
+      "run_id": "2026-07-13T065823+0000-secure-file-locker",
+      "role": "analysis",
+      "kind": "tool",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "TCR-4b3a65d2871c",
+        "TCR-22f9b6733f10"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\broker\\dataflow-scanner-TCR-4b3a65d2871c.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\dataflow-scan.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\broker\\pattern-scanner-TCR-22f9b6733f10.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\pattern-scan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:23+00:00",
+      "finished_at": "2026-07-13T06:58:23+00:00",
+      "created_at": "2026-07-13T06:58:23+00:00",
+      "id": "TSK-bfd68df942f8"
+    },
+    {
+      "run_id": "2026-07-13T065823+0000-secure-file-locker",
+      "role": "recon",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "HO-66e54c967825"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\agent_traces\\recon.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\handoffs\\recon-to-analysis.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:23+00:00",
+      "finished_at": "2026-07-13T06:58:23+00:00",
+      "created_at": "2026-07-13T06:58:23+00:00",
+      "id": "TSK-7cff4cbd712f"
+    },
+    {
+      "run_id": "2026-07-13T065823+0000-secure-file-locker",
+      "role": "analysis",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\agent_traces\\analysis.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\handoffs\\analysis-to-verification.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\findings\\candidates.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:23+00:00",
+      "finished_at": "2026-07-13T06:58:23+00:00",
+      "created_at": "2026-07-13T06:58:23+00:00",
+      "id": "TSK-4f81e014f9db"
+    },
+    {
+      "run_id": "2026-07-13T065823+0000-secure-file-locker",
+      "role": "verification",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\agent_traces\\verification.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\handoffs\\verification-to-reporting.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\findings\\verification.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:23+00:00",
+      "finished_at": "2026-07-13T06:58:23+00:00",
+      "created_at": "2026-07-13T06:58:23+00:00",
+      "id": "TSK-fa48197f5fc3"
+    },
+    {
+      "run_id": "2026-07-13T065823+0000-secure-file-locker",
+      "role": "validation",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\verification\\target-manifest-before.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\verification\\target-manifest-after.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\verification\\target-integrity-comparison.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:23+00:00",
+      "finished_at": "2026-07-13T06:58:23+00:00",
+      "created_at": "2026-07-13T06:58:23+00:00",
+      "id": "TSK-7a74dc80ad6d"
+    },
+    {
+      "run_id": "2026-07-13T065823+0000-secure-file-locker",
+      "role": "reporting",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\report.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\report.md",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\run-resource-summary.v1.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\report.json",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\report.md",
+        ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\run-resource-summary.v1.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:23+00:00",
+      "finished_at": "2026-07-13T06:58:23+00:00",
+      "created_at": "2026-07-13T06:58:23+00:00",
+      "id": "TSK-da6de2936039"
+    }
+  ],
+  "artifact_refs": [
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\metadata\\repository.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\metadata\\plan.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\broker\\dataflow-scanner-TCR-4b3a65d2871c.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\dataflow-scan.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\broker\\pattern-scanner-TCR-22f9b6733f10.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\tool_outputs\\pattern-scan.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\agent_traces\\recon.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\handoffs\\recon-to-analysis.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\agent_traces\\analysis.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\handoffs\\analysis-to-verification.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\findings\\candidates.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\agent_traces\\verification.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\handoffs\\verification-to-reporting.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\findings\\verification.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\verification\\target-manifest-before.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\verification\\target-manifest-after.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\verification\\target-integrity-comparison.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\report.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\report.md",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\run-resource-summary.v1.json"
+  ],
+  "message_refs": [],
+  "final_summary": {
+    "run_dir": ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker",
+    "candidate_count": 0,
+    "rejected_count": 0,
+    "validated_count": 0,
+    "confirmed_count": 0,
+    "likely_count": 0,
+    "manual_required_count": 0,
+    "validation_level_distribution": {
+      "static-only": 0
+    },
+    "runtime_state_ref": ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\runtime_state\\state.json",
+    "resource_summary_ref": ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\run-resource-summary.v1.json"
+  },
+  "error": "",
+  "started_at": "2026-07-13T06:58:23+00:00",
+  "finished_at": "2026-07-13T06:58:23+00:00",
+  "created_at": "2026-07-13T06:58:23+00:00"
+}

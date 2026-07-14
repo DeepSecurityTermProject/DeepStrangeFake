@@ -1,0 +1,27 @@
+{
+  "request_id": "TC-bd46573eb248",
+  "tool_name": "pattern-scanner",
+  "success": true,
+  "status": "ok",
+  "message": "0 observations",
+  "observations": [],
+  "output": {
+    "tool_name": "pattern-scanner",
+    "inputs": {
+      "target": ".benchmark-selection/secure-file-locker",
+      "file_count": 1
+    },
+    "success": true,
+    "exit_status": 0,
+    "duration_ms": 0,
+    "artifact_paths": [],
+    "observations": [],
+    "message": "0 observations",
+    "id": "TR-0e0d8497e053"
+  },
+  "duration_ms": 0,
+  "artifact_paths": [],
+  "raw": {},
+  "created_at": "2026-07-13T06:58:23+00:00",
+  "id": "TCR-22f9b6733f10"
+}

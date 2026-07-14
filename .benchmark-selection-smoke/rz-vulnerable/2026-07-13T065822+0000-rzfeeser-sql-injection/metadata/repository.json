@@ -1,0 +1,68 @@
+{
+  "target": {
+    "source": ".benchmark-selection/rzfeeser-sql-injection",
+    "kind": "local",
+    "path": "D:\\DeepStrangeFake\\.benchmark-selection\\rzfeeser-sql-injection",
+    "url": null,
+    "owner": null,
+    "repo": null,
+    "ref": null,
+    "commit": "24f4e6ae630cc7ff2e2326474dc35bf24480e5cf"
+  },
+  "root_path": "D:\\DeepStrangeFake\\.benchmark-selection\\rzfeeser-sql-injection",
+  "commit": "24f4e6ae630cc7ff2e2326474dc35bf24480e5cf",
+  "dominant_language": "Python",
+  "languages": {
+    "Python": 1087
+  },
+  "file_tree": [
+    "main_vulnerable.py"
+  ],
+  "file_categories": {
+    "main_vulnerable.py": "product-code"
+  },
+  "dependencies": [],
+  "attack_surfaces": [
+    {
+      "kind": "route",
+      "path": "main_vulnerable.py",
+      "start_line": 7,
+      "end_line": 7,
+      "symbol": null,
+      "detail": "@app.route('/')"
+    },
+    {
+      "kind": "route",
+      "path": "main_vulnerable.py",
+      "start_line": 12,
+      "end_line": 12,
+      "symbol": null,
+      "detail": "@app.route('/login', methods=['POST'])"
+    },
+    {
+      "kind": "database-access",
+      "path": "main_vulnerable.py",
+      "start_line": 22,
+      "end_line": 22,
+      "symbol": null,
+      "detail": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+    },
+    {
+      "kind": "hardcoded-secret",
+      "path": "main_vulnerable.py",
+      "start_line": 22,
+      "end_line": 22,
+      "symbol": null,
+      "detail": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+    },
+    {
+      "kind": "database-access",
+      "path": "main_vulnerable.py",
+      "start_line": 23,
+      "end_line": 23,
+      "symbol": null,
+      "detail": "cursor.execute(query)  # Executes the query with unsanitized input"
+    }
+  ],
+  "generated_at": "2026-07-13T06:58:22+00:00"
+}

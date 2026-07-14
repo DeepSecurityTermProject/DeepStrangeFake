@@ -1,0 +1,223 @@
+{
+  "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+  "target": ".benchmark-selection/rzfeeser-sql-injection",
+  "status": "succeeded",
+  "config_summary": {
+    "runtime_enabled": false,
+    "llm_provider": "mock",
+    "llm_decisions": false,
+    "poc_repair": false,
+    "poc_repair_source": "default"
+  },
+  "tasks": [
+    {
+      "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+      "role": "orchestrator",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\metadata\\plan.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\metadata\\plan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:22+00:00",
+      "finished_at": "2026-07-13T06:58:22+00:00",
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "TSK-2d897190cff4"
+    },
+    {
+      "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+      "role": "analysis",
+      "kind": "tool",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "TCR-8f3739e7af25",
+        "TCR-57ed69dfd1b4"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\dataflow-scanner-TCR-8f3739e7af25.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\dataflow-scan.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\pattern-scanner-TCR-57ed69dfd1b4.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\pattern-scan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:22+00:00",
+      "finished_at": "2026-07-13T06:58:22+00:00",
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "TSK-0282ccc9cc73"
+    },
+    {
+      "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+      "role": "recon",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "HO-4cb04ce35db3"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\agent_traces\\recon.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\handoffs\\recon-to-analysis.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:22+00:00",
+      "finished_at": "2026-07-13T06:58:22+00:00",
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "TSK-cf8966b2716e"
+    },
+    {
+      "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+      "role": "analysis",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "F-b9b7ad12aeca",
+        "F-ba65738b64e8",
+        "F-d639010d4bf2"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\agent_traces\\analysis.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\handoffs\\analysis-to-verification.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\findings\\candidates.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:22+00:00",
+      "finished_at": "2026-07-13T06:58:22+00:00",
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "TSK-4c90844163dc"
+    },
+    {
+      "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+      "role": "verification",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "F-b9b7ad12aeca",
+        "F-ba65738b64e8",
+        "F-d639010d4bf2"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\agent_traces\\verification.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\handoffs\\verification-to-reporting.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\findings\\verification.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:22+00:00",
+      "finished_at": "2026-07-13T06:58:22+00:00",
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "TSK-d419efdb168d"
+    },
+    {
+      "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+      "role": "validation",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "EC-02ed07c4dbea",
+        "EC-44c3cb56e86a",
+        "EC-17fd8f3e761e"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-before.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-integrity-comparison.json",
+        "TCR-8f3739e7af25",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+        "TCR-57ed69dfd1b4"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:22+00:00",
+      "finished_at": "2026-07-13T06:58:22+00:00",
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "TSK-151ac6f0a7f5"
+    },
+    {
+      "run_id": "2026-07-13T065822+0000-rzfeeser-sql-injection",
+      "role": "reporting",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\report.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\report.md",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\run-resource-summary.v1.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\report.json",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\report.md",
+        ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\run-resource-summary.v1.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:22+00:00",
+      "finished_at": "2026-07-13T06:58:22+00:00",
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "TSK-fad70d5b8469"
+    }
+  ],
+  "artifact_refs": [
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\metadata\\repository.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\metadata\\plan.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\dataflow-scanner-TCR-8f3739e7af25.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\dataflow-scan.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\pattern-scanner-TCR-57ed69dfd1b4.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\pattern-scan.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\agent_traces\\recon.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\handoffs\\recon-to-analysis.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\agent_traces\\analysis.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\handoffs\\analysis-to-verification.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\findings\\candidates.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\agent_traces\\verification.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\handoffs\\verification-to-reporting.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\findings\\verification.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-before.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-integrity-comparison.json",
+    "TCR-8f3739e7af25",
+    "TCR-57ed69dfd1b4",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\report.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\report.md",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\run-resource-summary.v1.json"
+  ],
+  "message_refs": [],
+  "final_summary": {
+    "run_dir": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection",
+    "candidate_count": 3,
+    "rejected_count": 0,
+    "validated_count": 3,
+    "confirmed_count": 0,
+    "likely_count": 3,
+    "manual_required_count": 0,
+    "validation_level_distribution": {
+      "static-only": 3
+    },
+    "runtime_state_ref": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\runtime_state\\state.json",
+    "resource_summary_ref": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\reports\\run-resource-summary.v1.json"
+  },
+  "error": "",
+  "started_at": "2026-07-13T06:58:22+00:00",
+  "finished_at": "2026-07-13T06:58:22+00:00",
+  "created_at": "2026-07-13T06:58:22+00:00"
+}

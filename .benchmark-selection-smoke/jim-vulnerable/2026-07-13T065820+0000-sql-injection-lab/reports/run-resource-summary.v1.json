@@ -1,0 +1,76 @@
+{
+  "schema_version": "run-resource-summary.v1",
+  "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+  "target_identity": ".benchmark-selection/sql-injection-lab",
+  "target_commit": "4624b0743464a1975acab215d1ffdbf1a8b622ba",
+  "terminal_status": "succeeded",
+  "scanned_files": 1,
+  "scanned_bytes": 18056,
+  "stage_durations_ms": {
+    "analysis": 0,
+    "orchestrator": 0,
+    "recon": 0,
+    "validation": 1000,
+    "verification": 0
+  },
+  "final_status_counts": {
+    "confirmed_count": 0,
+    "likely_count": 13,
+    "rejected_count": 0,
+    "manual_required_count": 0
+  },
+  "llm_requests": 0,
+  "llm_tokens": 0,
+  "tool_calls": 2,
+  "docker_starts": 0,
+  "docker_results": 0,
+  "repair_attempts": 0,
+  "timeouts": 0,
+  "budget_consumption": {
+    "llm_requests": 0,
+    "llm_tokens": 0,
+    "tool_calls": 2,
+    "docker_starts": 0,
+    "repair_attempts": 0
+  },
+  "accounting_gaps": [],
+  "contributing_refs": [
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\metadata\\repository.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\runtime_state\\state.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\report.json"
+  ],
+  "provider": "disabled",
+  "model": null,
+  "prompt_schema_version": null,
+  "engine_commit": "92a53b5a34338bfc0a25b03f717a1ad05e067b90",
+  "language": "Python",
+  "scope": {
+    "include": [
+      "python/vulnerable_app.py"
+    ],
+    "exclude": [
+      "tests/**",
+      "test/**",
+      "fixtures/**",
+      "external/**",
+      "openspec/**",
+      ".codex/**"
+    ]
+  },
+  "safety": {
+    "target_writes": false,
+    "project_execution": false,
+    "network": false
+  },
+  "docker_policy": {
+    "enabled": false,
+    "runner": "local"
+  },
+  "environment": {
+    "python": "3.12.3",
+    "platform": "nt",
+    "benchmark_project_id": null
+  },
+  "elapsed_seconds": 1.433,
+  "generated_at": "2026-07-13T06:58:21+00:00"
+}

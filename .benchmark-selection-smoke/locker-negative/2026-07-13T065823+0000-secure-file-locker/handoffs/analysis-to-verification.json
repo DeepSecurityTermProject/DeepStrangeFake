@@ -1,0 +1,17 @@
+{
+  "from_agent": "analysis",
+  "to_agent": "verification",
+  "completed_work": "Candidate findings generated from local tool evidence and contextual intelligence.",
+  "key_findings": [],
+  "evidence_refs": [],
+  "attention_points": [
+    "Reject intelligence-only matches without local evidence."
+  ],
+  "suggested_next_actions": [
+    "Independently verify local evidence.",
+    "Select safe validation level."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-7d5c23854063",
+  "id": "HO-1a7ffefb4c8e"
+}

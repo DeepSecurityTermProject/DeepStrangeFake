@@ -1,0 +1,17 @@
+{
+  "from_agent": "recon",
+  "to_agent": "analysis",
+  "completed_work": "Repository and attack-surface reconnaissance completed.",
+  "key_findings": [
+    "route:app.py:36"
+  ],
+  "evidence_refs": [],
+  "attention_points": [],
+  "suggested_next_actions": [
+    "Prioritize source sinks with local evidence.",
+    "Treat CVE intelligence as context."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-837c23f94417",
+  "id": "HO-66e54c967825"
+}

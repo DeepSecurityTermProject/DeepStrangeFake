@@ -1,0 +1,43 @@
+{
+  "agent_name": "analysis",
+  "reasoning_summary": "Converted deterministic tool observations and contextual CVE/CWE intelligence into candidate findings.",
+  "prompt": "",
+  "selected_context_refs": [
+    "main_protected.py",
+    "main_protected.py",
+    "main_protected.py"
+  ],
+  "model_metadata": {
+    "provider": "mock",
+    "model": "deterministic-local"
+  },
+  "raw_response": "deterministic-analysis",
+  "react_steps": [
+    {
+      "action": "consume_recon_handoff",
+      "handoff": "HO-4cb04ce35db3"
+    },
+    {
+      "action": "review_tool_results",
+      "tool_result_count": 2
+    },
+    {
+      "action": "emit_candidates",
+      "candidate_count": 3
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool": "dataflow-scanner",
+      "result_id": "TCR-ae4ef9d682cf",
+      "observations": 1
+    },
+    {
+      "tool": "pattern-scanner",
+      "result_id": "TCR-5ed95da5675d",
+      "observations": 2
+    }
+  ],
+  "created_at": "2026-07-13T06:58:22+00:00",
+  "id": "AT-03fd93f287b6"
+}

@@ -1,0 +1,36 @@
+{
+  "target": {
+    "source": ".benchmark-selection/secure-file-locker",
+    "kind": "local",
+    "path": "D:\\DeepStrangeFake\\.benchmark-selection\\secure-file-locker",
+    "url": null,
+    "owner": null,
+    "repo": null,
+    "ref": null,
+    "commit": "b2dd76f1b5d68200722f62c4935cc8ed0c80a59e"
+  },
+  "root_path": "D:\\DeepStrangeFake\\.benchmark-selection\\secure-file-locker",
+  "commit": "b2dd76f1b5d68200722f62c4935cc8ed0c80a59e",
+  "dominant_language": "Python",
+  "languages": {
+    "Python": 1248
+  },
+  "file_tree": [
+    "app.py"
+  ],
+  "file_categories": {
+    "app.py": "product-code"
+  },
+  "dependencies": [],
+  "attack_surfaces": [
+    {
+      "kind": "route",
+      "path": "app.py",
+      "start_line": 36,
+      "end_line": 36,
+      "symbol": null,
+      "detail": "@app.route(\"/file\")"
+    }
+  ],
+  "generated_at": "2026-07-13T06:58:23+00:00"
+}

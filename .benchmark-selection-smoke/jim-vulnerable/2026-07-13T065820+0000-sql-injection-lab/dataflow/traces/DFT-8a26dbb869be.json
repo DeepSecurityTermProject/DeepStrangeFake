@@ -1,0 +1,70 @@
+{
+  "vulnerability_class": "sql-injection",
+  "language": "python",
+  "path": "python/vulnerable_app.py",
+  "source": {
+    "path": "python/vulnerable_app.py",
+    "start_line": 255,
+    "end_line": 255,
+    "expression": "request.args.get('id', '1')",
+    "language": "python",
+    "kind": "source",
+    "symbol": "request.args.get('id', '1')",
+    "snippet": "user_id = request.args.get('id', '1')",
+    "framework": "python-web",
+    "id": "DFN-ce5ab5ab126b",
+    "source_type": "request"
+  },
+  "sink": {
+    "path": "python/vulnerable_app.py",
+    "start_line": 265,
+    "end_line": 265,
+    "expression": "db.execute(query)",
+    "language": "python",
+    "kind": "sink",
+    "symbol": "db.execute",
+    "snippet": "cur = db.execute(query)",
+    "framework": null,
+    "id": "DFN-77eb6751dfef",
+    "sink_type": "sql",
+    "vulnerability_class": "sql-injection"
+  },
+  "steps": [
+    {
+      "path": "python/vulnerable_app.py",
+      "start_line": 255,
+      "end_line": 255,
+      "expression": "user_id = request.args.get('id', '1')",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-ce5ab5ab126b",
+      "to_id": null,
+      "description": "Tainted value assigned to user_id.",
+      "snippet": "user_id = request.args.get('id', '1')",
+      "id": "DFS-e6860269d897"
+    },
+    {
+      "path": "python/vulnerable_app.py",
+      "start_line": 259,
+      "end_line": 259,
+      "expression": "query = f'SELECT * FROM users WHERE id = {user_id}'",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-ce5ab5ab126b",
+      "to_id": null,
+      "description": "Tainted value assigned to query.",
+      "snippet": "query = f\"SELECT * FROM users WHERE id = {user_id}\"",
+      "id": "DFS-130dc2891e8a"
+    }
+  ],
+  "sanitizers": [],
+  "status": "complete-flow",
+  "confidence": 0.86,
+  "rule_ids": [
+    "PY.SQL.RAW"
+  ],
+  "metadata": {},
+  "explanation": "request.args.get('id', '1') reaches db.execute(query)",
+  "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+  "id": "DFT-8a26dbb869be"
+}

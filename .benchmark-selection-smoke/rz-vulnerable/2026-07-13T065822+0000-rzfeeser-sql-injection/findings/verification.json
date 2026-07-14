@@ -1,0 +1,289 @@
+[
+  {
+    "finding": {
+      "vulnerability_class": "sql-injection",
+      "severity": "high",
+      "confidence": 0.86,
+      "location": {
+        "path": "main_vulnerable.py",
+        "start_line": 23,
+        "end_line": 23,
+        "symbol": "cursor.execute",
+        "snippet": "request.form['username'] -> cursor.execute(query)"
+      },
+      "title": "Potential SQL injection",
+      "evidence": [
+        "request.form['username'] -> cursor.execute(query)"
+      ],
+      "remediation": "Use parameterized queries and avoid string interpolation for SQL.",
+      "description": "Dataflow trace shows request.form['username'] reaching cursor.execute(query).",
+      "affected_function": null,
+      "call_path": [
+        "source:main_vulnerable.py:14:request.form['username']",
+        "assignment:main_vulnerable.py:14:username = request.form['username']",
+        "assignment:main_vulnerable.py:22:query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\"",
+        "sink:main_vulnerable.py:23:cursor.execute(query)"
+      ],
+      "tool_refs": [
+        "TCR-8f3739e7af25"
+      ],
+      "intelligence_refs": [],
+      "agent_trace_refs": [
+        "AT-601d5007ed1a",
+        "AT-03fd93f287b6",
+        "AT-900195f74b9d"
+      ],
+      "handoff_refs": [
+        "HO-4cb04ce35db3",
+        "HO-ed6c44478c90",
+        "HO-ac9854ef7fec"
+      ],
+      "validation_level": "static-only",
+      "validation_status": null,
+      "verification_status": null,
+      "verification_reason": null,
+      "verifier_decision": "accept",
+      "cve_ids": [],
+      "cwe_ids": [],
+      "cvss": null,
+      "epss": null,
+      "kev": null,
+      "public_poc_available": null,
+      "risk_score": null,
+      "metadata": {
+        "dataflow_trace_ids": [
+          "DFT-49753e7d82ef"
+        ],
+        "dataflow_trace_refs": [
+          ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+        ],
+        "dataflow_summary": {
+          "trace_id": "DFT-49753e7d82ef",
+          "status": "complete-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "main_vulnerable.py",
+            "line": 14,
+            "expression": "request.form['username']",
+            "symbol": "request.form['username']"
+          },
+          "sink": {
+            "path": "main_vulnerable.py",
+            "line": 23,
+            "expression": "cursor.execute(query)",
+            "symbol": "cursor.execute"
+          },
+          "sanitizer_status": "absent",
+          "sanitizers": [],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "confidence": 0.86,
+          "artifact_path": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+        },
+        "dataflow_status": "complete-flow",
+        "dataflow_rule_ids": [
+          "PY.SQL.RAW"
+        ],
+        "dataflow_locations": [
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 14,
+            "end_line": 14,
+            "symbol": "request.form['username']",
+            "snippet": "username = request.form['username']"
+          },
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 14,
+            "end_line": 14,
+            "symbol": null,
+            "snippet": "username = request.form['username']"
+          },
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 22,
+            "end_line": 22,
+            "symbol": null,
+            "snippet": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+          },
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 23,
+            "end_line": 23,
+            "symbol": "cursor.execute",
+            "snippet": "cursor.execute(query)  # Executes the query with unsanitized input"
+          }
+        ],
+        "local_evidence_refs": [
+          "TCR-8f3739e7af25",
+          ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+        ],
+        "decision_source": "deterministic",
+        "runtime_task_refs": [
+          "TSK-d419efdb168d"
+        ]
+      },
+      "id": "F-b9b7ad12aeca"
+    },
+    "decision": "accept",
+    "reason": "Accepted: complete local source-to-sink dataflow evidence is present.",
+    "confidence": 0.86,
+    "validation_level": "static-only",
+    "priority": "high",
+    "intelligence_refs": [],
+    "decision_source": "deterministic",
+    "llm_confidence": null,
+    "policy_gate": {},
+    "prompt_refs": [],
+    "llm_response_refs": [],
+    "fallback_reason": "",
+    "finding_id": "F-b9b7ad12aeca",
+    "created_at": "2026-07-13T06:58:22+00:00"
+  },
+  {
+    "finding": {
+      "vulnerability_class": "sql-injection",
+      "severity": "high",
+      "confidence": 0.72,
+      "location": {
+        "path": "main_vulnerable.py",
+        "start_line": 22,
+        "end_line": 22,
+        "symbol": null,
+        "snippet": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+      },
+      "title": "Potential SQL injection",
+      "evidence": [
+        "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+      ],
+      "remediation": "Use parameterized queries and avoid string interpolation for SQL.",
+      "description": "SQL string uses user-controlled input.",
+      "affected_function": null,
+      "call_path": [
+        "main_vulnerable.py:22",
+        "sink"
+      ],
+      "tool_refs": [
+        "TCR-57ed69dfd1b4"
+      ],
+      "intelligence_refs": [],
+      "agent_trace_refs": [
+        "AT-601d5007ed1a",
+        "AT-03fd93f287b6",
+        "AT-900195f74b9d"
+      ],
+      "handoff_refs": [
+        "HO-4cb04ce35db3",
+        "HO-ed6c44478c90",
+        "HO-ac9854ef7fec"
+      ],
+      "validation_level": "static-only",
+      "validation_status": null,
+      "verification_status": null,
+      "verification_reason": null,
+      "verifier_decision": "accept",
+      "cve_ids": [],
+      "cwe_ids": [],
+      "cvss": null,
+      "epss": null,
+      "kev": null,
+      "public_poc_available": null,
+      "risk_score": null,
+      "metadata": {
+        "decision_source": "deterministic",
+        "runtime_task_refs": [
+          "TSK-d419efdb168d"
+        ]
+      },
+      "id": "F-ba65738b64e8"
+    },
+    "decision": "accept",
+    "reason": "Accepted: local source evidence and tool output are present.",
+    "confidence": 0.72,
+    "validation_level": "static-only",
+    "priority": "high",
+    "intelligence_refs": [],
+    "decision_source": "deterministic",
+    "llm_confidence": null,
+    "policy_gate": {},
+    "prompt_refs": [],
+    "llm_response_refs": [],
+    "fallback_reason": "",
+    "finding_id": "F-ba65738b64e8",
+    "created_at": "2026-07-13T06:58:22+00:00"
+  },
+  {
+    "finding": {
+      "vulnerability_class": "hardcoded-secret",
+      "severity": "medium",
+      "confidence": 0.72,
+      "location": {
+        "path": "main_vulnerable.py",
+        "start_line": 22,
+        "end_line": 22,
+        "symbol": null,
+        "snippet": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+      },
+      "title": "Potential hardcoded secret",
+      "evidence": [
+        "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+      ],
+      "remediation": "Move secrets into a managed secret store and rotate exposed credentials.",
+      "description": "Hardcoded secret-like value.",
+      "affected_function": null,
+      "call_path": [
+        "main_vulnerable.py:22",
+        "sink"
+      ],
+      "tool_refs": [
+        "TCR-57ed69dfd1b4"
+      ],
+      "intelligence_refs": [],
+      "agent_trace_refs": [
+        "AT-601d5007ed1a",
+        "AT-03fd93f287b6",
+        "AT-900195f74b9d"
+      ],
+      "handoff_refs": [
+        "HO-4cb04ce35db3",
+        "HO-ed6c44478c90",
+        "HO-ac9854ef7fec"
+      ],
+      "validation_level": "static-only",
+      "validation_status": null,
+      "verification_status": null,
+      "verification_reason": null,
+      "verifier_decision": "accept",
+      "cve_ids": [],
+      "cwe_ids": [],
+      "cvss": null,
+      "epss": null,
+      "kev": null,
+      "public_poc_available": null,
+      "risk_score": null,
+      "metadata": {
+        "decision_source": "deterministic",
+        "runtime_task_refs": [
+          "TSK-d419efdb168d"
+        ]
+      },
+      "id": "F-d639010d4bf2"
+    },
+    "decision": "accept",
+    "reason": "Accepted: local source evidence and tool output are present.",
+    "confidence": 0.72,
+    "validation_level": "static-only",
+    "priority": "normal",
+    "intelligence_refs": [],
+    "decision_source": "deterministic",
+    "llm_confidence": null,
+    "policy_gate": {},
+    "prompt_refs": [],
+    "llm_response_refs": [],
+    "fallback_reason": "",
+    "finding_id": "F-d639010d4bf2",
+    "created_at": "2026-07-13T06:58:22+00:00"
+  }
+]

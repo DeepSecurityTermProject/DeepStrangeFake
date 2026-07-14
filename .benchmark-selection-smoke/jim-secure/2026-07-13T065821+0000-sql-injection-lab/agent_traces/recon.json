@@ -1,0 +1,32 @@
+{
+  "agent_name": "recon",
+  "reasoning_summary": "Mapped project structure, dependencies, attack surfaces, and contextual CVE intelligence.",
+  "prompt": "",
+  "selected_context_refs": [
+    "python/secure_app.py"
+  ],
+  "model_metadata": {
+    "provider": "mock",
+    "model": "deterministic-local"
+  },
+  "raw_response": "",
+  "react_steps": [
+    {
+      "action": "inspect_metadata",
+      "observed_files": 1
+    },
+    {
+      "action": "inspect_attack_surface",
+      "observed_surfaces": 11
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool": "cve-mcp-server",
+      "mode": "contextual",
+      "count": 0
+    }
+  ],
+  "created_at": "2026-07-13T06:58:21+00:00",
+  "id": "AT-87b90b52ecd4"
+}

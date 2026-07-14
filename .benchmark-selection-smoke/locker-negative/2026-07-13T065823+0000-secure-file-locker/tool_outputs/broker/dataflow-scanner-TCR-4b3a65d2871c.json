@@ -1,0 +1,30 @@
+{
+  "request_id": "TC-a65eaefd023b",
+  "tool_name": "dataflow-scanner",
+  "success": true,
+  "status": "ok",
+  "message": "0 dataflow observations",
+  "observations": [],
+  "output": {
+    "tool_name": "dataflow-scanner",
+    "inputs": {
+      "target": ".benchmark-selection/secure-file-locker",
+      "file_count": 1,
+      "scanned_files": 1,
+      "max_files": 500,
+      "max_traces": 200
+    },
+    "success": true,
+    "exit_status": 0,
+    "duration_ms": 0,
+    "artifact_paths": [],
+    "observations": [],
+    "message": "0 dataflow observations",
+    "id": "TR-6505f3070a92"
+  },
+  "duration_ms": 0,
+  "artifact_paths": [],
+  "raw": {},
+  "created_at": "2026-07-13T06:58:23+00:00",
+  "id": "TCR-4b3a65d2871c"
+}

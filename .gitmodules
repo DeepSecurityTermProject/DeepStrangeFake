@@ -1,0 +1,18 @@
+[submodule ".benchmark-selection/rzfeeser-sql-injection"]
+	path = .benchmark-selection/rzfeeser-sql-injection
+	url = https://github.com/rzfeeser/sql_injection.git
+[submodule ".benchmark-selection/secure-file-locker"]
+	path = .benchmark-selection/secure-file-locker
+	url = https://github.com/sh1vmani/secure-file-locker.git
+[submodule ".benchmark-selection/sql-injection-lab"]
+	path = .benchmark-selection/sql-injection-lab
+	url = https://github.com/JimProKing/sql-injection-lab.git
+[submodule ".benchmark-selection/vuln-flask-web-app"]
+	path = .benchmark-selection/vuln-flask-web-app
+	url = https://github.com/guiadeappsec/vuln-flask-web-app.git
+[submodule ".benchmark-selection/vulpy"]
+	path = .benchmark-selection/vulpy
+	url = https://github.com/fportantier/vulpy.git
+[submodule ".benchmark-selection/xiaomusic"]
+	path = .benchmark-selection/xiaomusic
+	url = https://github.com/hanxi/xiaomusic.git

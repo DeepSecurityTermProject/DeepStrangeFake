@@ -1,0 +1,71 @@
+{
+  "vulnerability_class": "sql-injection",
+  "language": "python",
+  "path": "main_protected.py",
+  "source": {
+    "path": "main_protected.py",
+    "start_line": 14,
+    "end_line": 14,
+    "expression": "request.form['username']",
+    "language": "python",
+    "kind": "source",
+    "symbol": "request.form['username']",
+    "snippet": "username = request.form['username']",
+    "framework": "python-web",
+    "id": "DFN-825807dac320",
+    "source_type": "request"
+  },
+  "sink": {
+    "path": "main_protected.py",
+    "start_line": 25,
+    "end_line": 25,
+    "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+    "language": "python",
+    "kind": "sink",
+    "symbol": "cursor.execute",
+    "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))",
+    "framework": null,
+    "id": "DFN-916bbfb99fc5",
+    "sink_type": "sql",
+    "vulnerability_class": "sql-injection"
+  },
+  "steps": [
+    {
+      "path": "main_protected.py",
+      "start_line": 14,
+      "end_line": 14,
+      "expression": "username = request.form['username']",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-825807dac320",
+      "to_id": null,
+      "description": "Tainted value assigned to username.",
+      "snippet": "username = request.form['username']",
+      "id": "DFS-25de1b425ee0"
+    }
+  ],
+  "sanitizers": [
+    {
+      "path": "main_protected.py",
+      "start_line": 25,
+      "end_line": 25,
+      "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+      "language": "python",
+      "kind": "sanitizer",
+      "symbol": "cursor.execute",
+      "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))",
+      "framework": null,
+      "id": "DFN-6f44e6f826d4",
+      "sanitizer_type": "sql-parameter-binding"
+    }
+  ],
+  "status": "sanitized-flow",
+  "confidence": 0.45,
+  "rule_ids": [
+    "PY.SQL.PARAM"
+  ],
+  "metadata": {},
+  "explanation": "request.form['username'] reaches cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)) through sanitizer",
+  "artifact_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+  "id": "DFT-7802ac6e4195"
+}

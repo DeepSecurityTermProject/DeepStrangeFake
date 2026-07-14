@@ -1,0 +1,256 @@
+{
+  "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+  "target": ".benchmark-selection/sql-injection-lab",
+  "status": "succeeded",
+  "config_summary": {
+    "runtime_enabled": false,
+    "llm_provider": "mock",
+    "llm_decisions": false,
+    "poc_repair": false,
+    "poc_repair_source": "default"
+  },
+  "tasks": [
+    {
+      "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+      "role": "orchestrator",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\metadata\\plan.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\metadata\\plan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:20+00:00",
+      "finished_at": "2026-07-13T06:58:20+00:00",
+      "created_at": "2026-07-13T06:58:20+00:00",
+      "id": "TSK-28961431ac92"
+    },
+    {
+      "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+      "role": "analysis",
+      "kind": "tool",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "TCR-b66c18887fcd",
+        "TCR-5a0e3f4ae7d5"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\broker\\dataflow-scanner-TCR-b66c18887fcd.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\dataflow-scan.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\broker\\pattern-scanner-TCR-5a0e3f4ae7d5.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\pattern-scan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:20+00:00",
+      "finished_at": "2026-07-13T06:58:20+00:00",
+      "created_at": "2026-07-13T06:58:20+00:00",
+      "id": "TSK-ead3798c156f"
+    },
+    {
+      "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+      "role": "recon",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "HO-905b23637df7"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\agent_traces\\recon.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\handoffs\\recon-to-analysis.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:20+00:00",
+      "finished_at": "2026-07-13T06:58:20+00:00",
+      "created_at": "2026-07-13T06:58:20+00:00",
+      "id": "TSK-8cdc21878b2d"
+    },
+    {
+      "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+      "role": "analysis",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "F-4fbe4bb5c565",
+        "F-0a29eaf9aee3",
+        "F-adc1f7a91d77",
+        "F-b6c46718bc0b",
+        "F-c67f9889d5a8",
+        "F-16b59c5facdd",
+        "F-1cf184695530",
+        "F-a3b25cf4450f",
+        "F-5e4923963653",
+        "F-51ea1821ce61",
+        "F-11ca02a48cfc",
+        "F-ea94dbeb2e28",
+        "F-7e390cdbf38c"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\agent_traces\\analysis.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\handoffs\\analysis-to-verification.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\findings\\candidates.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:20+00:00",
+      "finished_at": "2026-07-13T06:58:20+00:00",
+      "created_at": "2026-07-13T06:58:20+00:00",
+      "id": "TSK-502fc460064f"
+    },
+    {
+      "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+      "role": "verification",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "F-4fbe4bb5c565",
+        "F-0a29eaf9aee3",
+        "F-adc1f7a91d77",
+        "F-b6c46718bc0b",
+        "F-c67f9889d5a8",
+        "F-16b59c5facdd",
+        "F-1cf184695530",
+        "F-a3b25cf4450f",
+        "F-5e4923963653",
+        "F-51ea1821ce61",
+        "F-11ca02a48cfc",
+        "F-ea94dbeb2e28",
+        "F-7e390cdbf38c"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\agent_traces\\verification.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\handoffs\\verification-to-reporting.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\findings\\verification.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:20+00:00",
+      "finished_at": "2026-07-13T06:58:20+00:00",
+      "created_at": "2026-07-13T06:58:20+00:00",
+      "id": "TSK-d33fa394154e"
+    },
+    {
+      "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+      "role": "validation",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "EC-fe098e845857",
+        "EC-56e507df2a08",
+        "EC-6b0b146b1a59",
+        "EC-d3f79d44478a",
+        "EC-7a73b4616161",
+        "EC-1c809e58f2dc",
+        "EC-93c461c96661",
+        "EC-f6a4a7f95842",
+        "EC-c8cbbb884723",
+        "EC-0cadd5b1f6e1",
+        "EC-9d517de20fa4",
+        "EC-286202a0d976",
+        "EC-bf29768e9e8d"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+        "TCR-b66c18887fcd",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+        "TCR-5a0e3f4ae7d5"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:20+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:20+00:00",
+      "id": "TSK-e8cf1e1b827c"
+    },
+    {
+      "run_id": "2026-07-13T065820+0000-sql-injection-lab",
+      "role": "reporting",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\report.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\report.md",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\report.json",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\report.md",
+        ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-fcb1e3c04c99"
+    }
+  ],
+  "artifact_refs": [
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\metadata\\repository.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\metadata\\plan.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-8a26dbb869be.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\broker\\dataflow-scanner-TCR-b66c18887fcd.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\dataflow-scan.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\broker\\pattern-scanner-TCR-5a0e3f4ae7d5.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\tool_outputs\\pattern-scan.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\agent_traces\\recon.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\handoffs\\recon-to-analysis.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\agent_traces\\analysis.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\handoffs\\analysis-to-verification.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\findings\\candidates.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\agent_traces\\verification.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\handoffs\\verification-to-reporting.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\findings\\verification.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+    "TCR-b66c18887fcd",
+    "TCR-5a0e3f4ae7d5",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\report.json",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\report.md",
+    ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+  ],
+  "message_refs": [],
+  "final_summary": {
+    "run_dir": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab",
+    "candidate_count": 13,
+    "rejected_count": 0,
+    "validated_count": 13,
+    "confirmed_count": 0,
+    "likely_count": 13,
+    "manual_required_count": 0,
+    "validation_level_distribution": {
+      "static-only": 13
+    },
+    "runtime_state_ref": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\runtime_state\\state.json",
+    "resource_summary_ref": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+  },
+  "error": "",
+  "started_at": "2026-07-13T06:58:20+00:00",
+  "finished_at": "2026-07-13T06:58:21+00:00",
+  "created_at": "2026-07-13T06:58:20+00:00"
+}

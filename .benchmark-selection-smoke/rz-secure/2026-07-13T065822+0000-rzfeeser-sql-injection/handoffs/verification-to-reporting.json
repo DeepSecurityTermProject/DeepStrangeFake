@@ -1,0 +1,25 @@
+{
+  "from_agent": "verification",
+  "to_agent": "reporting",
+  "completed_work": "Verification decisions completed with validation-level selection.",
+  "key_findings": [
+    "reject:F-038910609588",
+    "accept:F-c7a0769e5d5a",
+    "accept:F-b5a850ab6af5"
+  ],
+  "evidence_refs": [
+    "TCR-ae4ef9d682cf",
+    "TCR-5ed95da5675d",
+    "TCR-5ed95da5675d"
+  ],
+  "attention_points": [
+    "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace."
+  ],
+  "suggested_next_actions": [
+    "Persist evidence chains.",
+    "Generate structured reports."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-900195f74b9d",
+  "id": "HO-ac9854ef7fec"
+}

@@ -1,0 +1,83 @@
+{
+  "request_id": "TC-ba80c0298cbd",
+  "tool_name": "pattern-scanner",
+  "success": true,
+  "status": "ok",
+  "message": "2 observations",
+  "observations": [
+    {
+      "tool_name": "pattern-scanner",
+      "kind": "sast-warning",
+      "message": "SQL string uses user-controlled input.",
+      "path": "main_protected.py",
+      "line": 22,
+      "severity": "high",
+      "vulnerability_class": "sql-injection",
+      "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\"",
+      "success": true,
+      "degraded": false,
+      "raw": {}
+    },
+    {
+      "tool_name": "pattern-scanner",
+      "kind": "sast-warning",
+      "message": "Hardcoded secret-like value.",
+      "path": "main_protected.py",
+      "line": 22,
+      "severity": "medium",
+      "vulnerability_class": "hardcoded-secret",
+      "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\"",
+      "success": true,
+      "degraded": false,
+      "raw": {}
+    }
+  ],
+  "output": {
+    "tool_name": "pattern-scanner",
+    "inputs": {
+      "target": ".benchmark-selection/rzfeeser-sql-injection",
+      "file_count": 1
+    },
+    "success": true,
+    "exit_status": 0,
+    "duration_ms": 0,
+    "artifact_paths": [],
+    "observations": [
+      {
+        "tool_name": "pattern-scanner",
+        "kind": "sast-warning",
+        "message": "SQL string uses user-controlled input.",
+        "path": "main_protected.py",
+        "line": 22,
+        "severity": "high",
+        "vulnerability_class": "sql-injection",
+        "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\"",
+        "success": true,
+        "degraded": false,
+        "raw": {}
+      },
+      {
+        "tool_name": "pattern-scanner",
+        "kind": "sast-warning",
+        "message": "Hardcoded secret-like value.",
+        "path": "main_protected.py",
+        "line": 22,
+        "severity": "medium",
+        "vulnerability_class": "hardcoded-secret",
+        "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\"",
+        "success": true,
+        "degraded": false,
+        "raw": {}
+      }
+    ],
+    "message": "2 observations",
+    "id": "TR-1ab1e523935b"
+  },
+  "duration_ms": 0,
+  "artifact_paths": [
+    ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\pattern-scanner-TCR-5ed95da5675d.json"
+  ],
+  "raw": {},
+  "created_at": "2026-07-13T06:58:22+00:00",
+  "id": "TCR-5ed95da5675d"
+}

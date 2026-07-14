@@ -1,0 +1,30 @@
+{
+  "root_path": "D:\\DeepStrangeFake\\.benchmark-selection\\sql-injection-lab",
+  "phase": "before-validation",
+  "files": {
+    ".gitignore": "e31cfb27eefafa5401edefbf4648a5e6a45b238393a94d19930bf8600385b0b5",
+    "browser-simulator.html": "e432fad667d746af06fcaab24c5e02d5725562171d6e72b86c4d0141fd29a67b",
+    "db_setup_mysql.sql": "f88972aba8ff549d6657dab68e95adeca8658d75bd886c070f7fdcd138dad879",
+    "index.html": "dc90487661da85cf3cc4cb48f1d20732e0257d1174342410766df19d5aa4b1d0",
+    "jsp/secure-detail.jsp": "e980d5f068a703c44e422af4a17064efd732604e226c13402cc6fd7d3b6e56d9",
+    "jsp/secure-login.jsp": "9f6fa1ec4cfbb3065df437a1fcac24297cff76e110f38738de491a01f5eb8be0",
+    "jsp/secure-search.jsp": "37af9a64223d25ab79a8df9d73d99362cea76b0d4204c91b566c13b605ce4ec8",
+    "jsp/vuln-detail.jsp": "37e8bf4efc5721e385ef8f0673c376e26b4b369c19fdaef1414dc7a0ea84a8e8",
+    "jsp/vuln-login.jsp": "f7d39bb3cb0001b0a1a966eca5f7e9838093d89fd67aa5e720197d8bed1f9f13",
+    "jsp/vuln-search.jsp": "d52e921928046091fffa883726e0006b954df0a93fef3115f43bdfee27740817",
+    "LICENSE": "47f02b1f804bee57b37d273c0f1ded949e605e6b1934da019fca92ded78c7f11",
+    "payloads-cheatsheet.md": "378c6f66cc25b5b4b3d10fd7999f4094e48f7d1f6d8f593669e3bed793c30641",
+    "python/cli_simulator.py": "9c974ce63719ef6c6bc196e297afc7161f663c8a06cd79ed010c6db46be733ec",
+    "python/db_init.py": "a4ac869713b7a304f9f8fe0e1a8857db609e334f18dec0e8a22762c0435cb631",
+    "python/requirements.txt": "5789ab4c936d9c07b31735587c442803a6319753017787749f05b85d879d13f2",
+    "python/secure_app.py": "74914862d04dfc6631b488c6dcff9a1213f86864a79bff3d4e288bebdc6011de",
+    "python/vulnerable_app.py": "c7fdaec5445a6d8e9a43cf06e523a20c5fdaecbd5b7d4fb25678710af7572318",
+    "README.md": "90a2c2d241668cee512359e299fe192afc474218b0ae2966815e85d2dd94ccf6",
+    "run-secure.ps1": "af4c1a8c3a817c3320966c4884d6a8e89c74b9cf88318e091e09c036470d2136",
+    "run-vulnerable.ps1": "3f94426f263068bd247c89e0c4e4507edae8a3a3427a5f8697b67e61ab349976",
+    "START_HERE.md": "d70b537b6d3ba2dabbdc7028ec10cb154d41692bf7fb530f688c9100b0348017"
+  },
+  "metadata_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+  "created_at": "2026-07-13T06:58:21+00:00",
+  "id": "TFM-bb25dcee0712"
+}

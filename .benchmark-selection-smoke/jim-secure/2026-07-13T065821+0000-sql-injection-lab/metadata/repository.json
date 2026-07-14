@@ -1,0 +1,116 @@
+{
+  "target": {
+    "source": ".benchmark-selection/sql-injection-lab",
+    "kind": "local",
+    "path": "D:\\DeepStrangeFake\\.benchmark-selection\\sql-injection-lab",
+    "url": null,
+    "owner": null,
+    "repo": null,
+    "ref": null,
+    "commit": "4624b0743464a1975acab215d1ffdbf1a8b622ba"
+  },
+  "root_path": "D:\\DeepStrangeFake\\.benchmark-selection\\sql-injection-lab",
+  "commit": "4624b0743464a1975acab215d1ffdbf1a8b622ba",
+  "dominant_language": "Python",
+  "languages": {
+    "Python": 5079
+  },
+  "file_tree": [
+    "python/secure_app.py"
+  ],
+  "file_categories": {
+    "python/secure_app.py": "product-code"
+  },
+  "dependencies": [],
+  "attack_surfaces": [
+    {
+      "kind": "route",
+      "path": "python/secure_app.py",
+      "start_line": 26,
+      "end_line": 26,
+      "symbol": null,
+      "detail": "@app.route('/')"
+    },
+    {
+      "kind": "database-access",
+      "path": "python/secure_app.py",
+      "start_line": 46,
+      "end_line": 46,
+      "symbol": null,
+      "detail": "query = \"SELECT * FROM users WHERE username = '\" + username + \"' AND password = '\" + password + \"'\""
+    },
+    {
+      "kind": "database-access",
+      "path": "python/secure_app.py",
+      "start_line": 50,
+      "end_line": 50,
+      "symbol": null,
+      "detail": "query = \"SELECT * FROM users WHERE username = ? AND password = ?\""
+    },
+    {
+      "kind": "route",
+      "path": "python/secure_app.py",
+      "start_line": 60,
+      "end_line": 60,
+      "symbol": null,
+      "detail": "@app.route('/login', methods=['GET', 'POST'])"
+    },
+    {
+      "kind": "database-access",
+      "path": "python/secure_app.py",
+      "start_line": 68,
+      "end_line": 68,
+      "symbol": null,
+      "detail": "query = \"SELECT * FROM users WHERE username = ? AND password = ?\""
+    },
+    {
+      "kind": "route",
+      "path": "python/secure_app.py",
+      "start_line": 89,
+      "end_line": 89,
+      "symbol": null,
+      "detail": "@app.route('/search')"
+    },
+    {
+      "kind": "database-access",
+      "path": "python/secure_app.py",
+      "start_line": 96,
+      "end_line": 96,
+      "symbol": null,
+      "detail": "query = \"SELECT id, name, price, description FROM products WHERE name LIKE ? OR description LIKE ?\""
+    },
+    {
+      "kind": "route",
+      "path": "python/secure_app.py",
+      "start_line": 117,
+      "end_line": 117,
+      "symbol": null,
+      "detail": "@app.route('/user')"
+    },
+    {
+      "kind": "database-access",
+      "path": "python/secure_app.py",
+      "start_line": 121,
+      "end_line": 121,
+      "symbol": null,
+      "detail": "query = \"SELECT id, username, email, role FROM users WHERE id = ?\""
+    },
+    {
+      "kind": "auth-logic",
+      "path": "python/secure_app.py",
+      "start_line": 121,
+      "end_line": 121,
+      "symbol": null,
+      "detail": "query = \"SELECT id, username, email, role FROM users WHERE id = ?\""
+    },
+    {
+      "kind": "auth-logic",
+      "path": "python/secure_app.py",
+      "start_line": 126,
+      "end_line": 126,
+      "symbol": null,
+      "detail": "result = f\"<p>Username: {row['username']} / Role: {row['role']}</p>\""
+    }
+  ],
+  "generated_at": "2026-07-13T06:58:21+00:00"
+}

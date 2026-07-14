@@ -1,0 +1,23 @@
+{
+  "target_id": "D:\\DeepStrangeFake\\.benchmark-selection\\rzfeeser-sql-injection",
+  "vulnerability_classes": [
+    "sql-injection",
+    "command-injection",
+    "path-traversal",
+    "hardcoded-secret"
+  ],
+  "validation_level": "static-only",
+  "budgets": {
+    "analysis": 100,
+    "tools": 80,
+    "cve_intelligence": 50
+  },
+  "agent_order": [
+    "orchestrator",
+    "recon",
+    "analysis",
+    "verification"
+  ],
+  "focus_areas": [],
+  "decision_source": "deterministic"
+}

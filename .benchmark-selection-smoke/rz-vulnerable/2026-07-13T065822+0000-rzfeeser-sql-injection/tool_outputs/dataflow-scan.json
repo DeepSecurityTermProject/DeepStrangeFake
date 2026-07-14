@@ -1,0 +1,255 @@
+{
+  "request_id": "TC-5aea63d745c9",
+  "tool_name": "dataflow-scanner",
+  "success": true,
+  "status": "ok",
+  "message": "1 dataflow observations",
+  "observations": [
+    {
+      "tool_name": "dataflow-scanner",
+      "kind": "dataflow-complete-flow",
+      "message": "request.form['username'] reaches cursor.execute(query)",
+      "path": "main_vulnerable.py",
+      "line": 23,
+      "severity": "high",
+      "vulnerability_class": "sql-injection",
+      "evidence": "request.form['username'] -> cursor.execute(query)",
+      "success": true,
+      "degraded": false,
+      "raw": {
+        "dataflow_trace_id": "DFT-49753e7d82ef",
+        "dataflow_trace_ref": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+        "dataflow_status": "complete-flow",
+        "dataflow_summary": {
+          "trace_id": "DFT-49753e7d82ef",
+          "status": "complete-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "main_vulnerable.py",
+            "line": 14,
+            "expression": "request.form['username']",
+            "symbol": "request.form['username']"
+          },
+          "sink": {
+            "path": "main_vulnerable.py",
+            "line": 23,
+            "expression": "cursor.execute(query)",
+            "symbol": "cursor.execute"
+          },
+          "sanitizer_status": "absent",
+          "sanitizers": [],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "confidence": 0.86,
+          "artifact_path": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+        },
+        "call_path": [
+          "source:main_vulnerable.py:14:request.form['username']",
+          "assignment:main_vulnerable.py:14:username = request.form['username']",
+          "assignment:main_vulnerable.py:22:query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\"",
+          "sink:main_vulnerable.py:23:cursor.execute(query)"
+        ],
+        "dataflow_locations": [
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 14,
+            "end_line": 14,
+            "symbol": "request.form['username']",
+            "snippet": "username = request.form['username']"
+          },
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 14,
+            "end_line": 14,
+            "symbol": null,
+            "snippet": "username = request.form['username']"
+          },
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 22,
+            "end_line": 22,
+            "symbol": null,
+            "snippet": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+          },
+          {
+            "path": "main_vulnerable.py",
+            "start_line": 23,
+            "end_line": 23,
+            "symbol": "cursor.execute",
+            "snippet": "cursor.execute(query)  # Executes the query with unsanitized input"
+          }
+        ],
+        "rule_ids": [
+          "PY.SQL.RAW"
+        ],
+        "sanitizer_status": "absent",
+        "trace_artifact": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+        "trace_payload_stored_in_artifact": true,
+        "trace_inline_preview": {
+          "trace_id": "DFT-49753e7d82ef",
+          "status": "complete-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "main_vulnerable.py",
+            "line": 14,
+            "expression": "request.form['username']",
+            "symbol": "request.form['username']"
+          },
+          "sink": {
+            "path": "main_vulnerable.py",
+            "line": 23,
+            "expression": "cursor.execute(query)",
+            "symbol": "cursor.execute"
+          },
+          "sanitizer_status": "absent",
+          "sanitizers": [],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "confidence": 0.86,
+          "artifact_path": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+        }
+      }
+    }
+  ],
+  "output": {
+    "tool_name": "dataflow-scanner",
+    "inputs": {
+      "target": ".benchmark-selection/rzfeeser-sql-injection",
+      "file_count": 1,
+      "scanned_files": 1,
+      "max_files": 500,
+      "max_traces": 200
+    },
+    "success": true,
+    "exit_status": 0,
+    "duration_ms": 0,
+    "artifact_paths": [
+      ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+    ],
+    "observations": [
+      {
+        "tool_name": "dataflow-scanner",
+        "kind": "dataflow-complete-flow",
+        "message": "request.form['username'] reaches cursor.execute(query)",
+        "path": "main_vulnerable.py",
+        "line": 23,
+        "severity": "high",
+        "vulnerability_class": "sql-injection",
+        "evidence": "request.form['username'] -> cursor.execute(query)",
+        "success": true,
+        "degraded": false,
+        "raw": {
+          "dataflow_trace_id": "DFT-49753e7d82ef",
+          "dataflow_trace_ref": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+          "dataflow_status": "complete-flow",
+          "dataflow_summary": {
+            "trace_id": "DFT-49753e7d82ef",
+            "status": "complete-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "main_vulnerable.py",
+              "line": 14,
+              "expression": "request.form['username']",
+              "symbol": "request.form['username']"
+            },
+            "sink": {
+              "path": "main_vulnerable.py",
+              "line": 23,
+              "expression": "cursor.execute(query)",
+              "symbol": "cursor.execute"
+            },
+            "sanitizer_status": "absent",
+            "sanitizers": [],
+            "rule_ids": [
+              "PY.SQL.RAW"
+            ],
+            "confidence": 0.86,
+            "artifact_path": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+          },
+          "call_path": [
+            "source:main_vulnerable.py:14:request.form['username']",
+            "assignment:main_vulnerable.py:14:username = request.form['username']",
+            "assignment:main_vulnerable.py:22:query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\"",
+            "sink:main_vulnerable.py:23:cursor.execute(query)"
+          ],
+          "dataflow_locations": [
+            {
+              "path": "main_vulnerable.py",
+              "start_line": 14,
+              "end_line": 14,
+              "symbol": "request.form['username']",
+              "snippet": "username = request.form['username']"
+            },
+            {
+              "path": "main_vulnerable.py",
+              "start_line": 14,
+              "end_line": 14,
+              "symbol": null,
+              "snippet": "username = request.form['username']"
+            },
+            {
+              "path": "main_vulnerable.py",
+              "start_line": 22,
+              "end_line": 22,
+              "symbol": null,
+              "snippet": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+            },
+            {
+              "path": "main_vulnerable.py",
+              "start_line": 23,
+              "end_line": 23,
+              "symbol": "cursor.execute",
+              "snippet": "cursor.execute(query)  # Executes the query with unsanitized input"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.RAW"
+          ],
+          "sanitizer_status": "absent",
+          "trace_artifact": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+          "trace_payload_stored_in_artifact": true,
+          "trace_inline_preview": {
+            "trace_id": "DFT-49753e7d82ef",
+            "status": "complete-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "main_vulnerable.py",
+              "line": 14,
+              "expression": "request.form['username']",
+              "symbol": "request.form['username']"
+            },
+            "sink": {
+              "path": "main_vulnerable.py",
+              "line": 23,
+              "expression": "cursor.execute(query)",
+              "symbol": "cursor.execute"
+            },
+            "sanitizer_status": "absent",
+            "sanitizers": [],
+            "rule_ids": [
+              "PY.SQL.RAW"
+            ],
+            "confidence": 0.86,
+            "artifact_path": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json"
+          }
+        }
+      }
+    ],
+    "message": "1 dataflow observations",
+    "id": "TR-8dd19d2f658e"
+  },
+  "duration_ms": 0,
+  "artifact_paths": [
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+    ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\dataflow-scanner-TCR-8f3739e7af25.json"
+  ],
+  "raw": {},
+  "created_at": "2026-07-13T06:58:22+00:00",
+  "id": "TCR-8f3739e7af25"
+}

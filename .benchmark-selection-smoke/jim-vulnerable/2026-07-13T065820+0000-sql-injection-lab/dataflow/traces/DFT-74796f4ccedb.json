@@ -1,0 +1,70 @@
+{
+  "vulnerability_class": "sql-injection",
+  "language": "python",
+  "path": "python/vulnerable_app.py",
+  "source": {
+    "path": "python/vulnerable_app.py",
+    "start_line": 189,
+    "end_line": 189,
+    "expression": "request.args.get('id', '1')",
+    "language": "python",
+    "kind": "source",
+    "symbol": "request.args.get('id', '1')",
+    "snippet": "user_id = request.args.get('id', '1')",
+    "framework": "python-web",
+    "id": "DFN-8a7f213e7cb3",
+    "source_type": "request"
+  },
+  "sink": {
+    "path": "python/vulnerable_app.py",
+    "start_line": 199,
+    "end_line": 199,
+    "expression": "db.execute(query)",
+    "language": "python",
+    "kind": "sink",
+    "symbol": "db.execute",
+    "snippet": "cur = db.execute(query)",
+    "framework": null,
+    "id": "DFN-8d14320eea2f",
+    "sink_type": "sql",
+    "vulnerability_class": "sql-injection"
+  },
+  "steps": [
+    {
+      "path": "python/vulnerable_app.py",
+      "start_line": 189,
+      "end_line": 189,
+      "expression": "user_id = request.args.get('id', '1')",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-8a7f213e7cb3",
+      "to_id": null,
+      "description": "Tainted value assigned to user_id.",
+      "snippet": "user_id = request.args.get('id', '1')",
+      "id": "DFS-a9752ea8ea48"
+    },
+    {
+      "path": "python/vulnerable_app.py",
+      "start_line": 194,
+      "end_line": 194,
+      "expression": "query = f'SELECT id, username, email, role, secret_note FROM users WHERE id = {user_id}'",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-8a7f213e7cb3",
+      "to_id": null,
+      "description": "Tainted value assigned to query.",
+      "snippet": "query = f\"SELECT id, username, email, role, secret_note FROM users WHERE id = {user_id}\"",
+      "id": "DFS-8011fcb41b86"
+    }
+  ],
+  "sanitizers": [],
+  "status": "complete-flow",
+  "confidence": 0.86,
+  "rule_ids": [
+    "PY.SQL.RAW"
+  ],
+  "metadata": {},
+  "explanation": "request.args.get('id', '1') reaches db.execute(query)",
+  "artifact_path": ".benchmark-selection-smoke\\jim-vulnerable\\2026-07-13T065820+0000-sql-injection-lab\\dataflow\\traces\\DFT-74796f4ccedb.json",
+  "id": "DFT-74796f4ccedb"
+}

@@ -1,0 +1,71 @@
+{
+  "vulnerability_class": "sql-injection",
+  "language": "python",
+  "path": "python/secure_app.py",
+  "source": {
+    "path": "python/secure_app.py",
+    "start_line": 119,
+    "end_line": 119,
+    "expression": "request.args.get('id', '1')",
+    "language": "python",
+    "kind": "source",
+    "symbol": "request.args.get('id', '1')",
+    "snippet": "user_id = request.args.get('id', '1')",
+    "framework": "python-web",
+    "id": "DFN-0a37d4960b94",
+    "source_type": "request"
+  },
+  "sink": {
+    "path": "python/secure_app.py",
+    "start_line": 123,
+    "end_line": 123,
+    "expression": "db.execute(query, (user_id,))",
+    "language": "python",
+    "kind": "sink",
+    "symbol": "db.execute",
+    "snippet": "row = db.execute(query, (user_id,)).fetchone()",
+    "framework": null,
+    "id": "DFN-87bf7e3086e4",
+    "sink_type": "sql",
+    "vulnerability_class": "sql-injection"
+  },
+  "steps": [
+    {
+      "path": "python/secure_app.py",
+      "start_line": 119,
+      "end_line": 119,
+      "expression": "user_id = request.args.get('id', '1')",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-0a37d4960b94",
+      "to_id": null,
+      "description": "Tainted value assigned to user_id.",
+      "snippet": "user_id = request.args.get('id', '1')",
+      "id": "DFS-bb942f897093"
+    }
+  ],
+  "sanitizers": [
+    {
+      "path": "python/secure_app.py",
+      "start_line": 123,
+      "end_line": 123,
+      "expression": "db.execute(query, (user_id,))",
+      "language": "python",
+      "kind": "sanitizer",
+      "symbol": "db.execute",
+      "snippet": "row = db.execute(query, (user_id,)).fetchone()",
+      "framework": null,
+      "id": "DFN-826b981ac84b",
+      "sanitizer_type": "sql-parameter-binding"
+    }
+  ],
+  "status": "sanitized-flow",
+  "confidence": 0.45,
+  "rule_ids": [
+    "PY.SQL.PARAM"
+  ],
+  "metadata": {},
+  "explanation": "request.args.get('id', '1') reaches db.execute(query, (user_id,)) through sanitizer",
+  "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+  "id": "DFT-dbfc6d245c92"
+}

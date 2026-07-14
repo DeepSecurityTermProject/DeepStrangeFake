@@ -1,0 +1,35 @@
+{
+  "agent_name": "verification",
+  "reasoning_summary": "Independently reviewed candidates, rejected weak evidence, and selected validation levels.",
+  "prompt": "",
+  "selected_context_refs": [
+    "main_protected.py",
+    "main_protected.py",
+    "main_protected.py"
+  ],
+  "model_metadata": {
+    "provider": "mock",
+    "model": "deterministic-local"
+  },
+  "raw_response": "deterministic-verification",
+  "react_steps": [
+    {
+      "action": "review_candidates",
+      "candidate_count": 3
+    },
+    {
+      "action": "emit_decisions",
+      "accepted": 2,
+      "rejected": 1
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool": "cve-mcp-server",
+      "mode": "prioritization",
+      "count": 0
+    }
+  ],
+  "created_at": "2026-07-13T06:58:22+00:00",
+  "id": "AT-900195f74b9d"
+}

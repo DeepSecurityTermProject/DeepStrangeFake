@@ -1,0 +1,27 @@
+{
+  "from_agent": "recon",
+  "to_agent": "analysis",
+  "completed_work": "Repository and attack-surface reconnaissance completed.",
+  "key_findings": [
+    "route:python/secure_app.py:26",
+    "database-access:python/secure_app.py:46",
+    "database-access:python/secure_app.py:50",
+    "route:python/secure_app.py:60",
+    "database-access:python/secure_app.py:68",
+    "route:python/secure_app.py:89",
+    "database-access:python/secure_app.py:96",
+    "route:python/secure_app.py:117",
+    "database-access:python/secure_app.py:121",
+    "auth-logic:python/secure_app.py:121",
+    "auth-logic:python/secure_app.py:126"
+  ],
+  "evidence_refs": [],
+  "attention_points": [],
+  "suggested_next_actions": [
+    "Prioritize source sinks with local evidence.",
+    "Treat CVE intelligence as context."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-87b90b52ecd4",
+  "id": "HO-e396e7122765"
+}

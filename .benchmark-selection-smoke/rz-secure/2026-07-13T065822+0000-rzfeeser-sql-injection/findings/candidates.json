@@ -1,0 +1,228 @@
+[
+  {
+    "vulnerability_class": "sql-injection",
+    "severity": "high",
+    "confidence": 0.45,
+    "location": {
+      "path": "main_protected.py",
+      "start_line": 25,
+      "end_line": 25,
+      "symbol": "cursor.execute",
+      "snippet": "request.form['username'] -> cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+    },
+    "title": "Potential SQL injection",
+    "evidence": [
+      "request.form['username'] -> cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+    ],
+    "remediation": "Use parameterized queries and avoid string interpolation for SQL.",
+    "description": "Dataflow trace shows request.form['username'] reaching cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).",
+    "affected_function": null,
+    "call_path": [
+      "source:main_protected.py:14:request.form['username']",
+      "assignment:main_protected.py:14:username = request.form['username']",
+      "sanitizer:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+      "sink:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+    ],
+    "tool_refs": [
+      "TCR-ae4ef9d682cf"
+    ],
+    "intelligence_refs": [],
+    "agent_trace_refs": [
+      "AT-601d5007ed1a",
+      "AT-03fd93f287b6"
+    ],
+    "handoff_refs": [
+      "HO-4cb04ce35db3",
+      "HO-ed6c44478c90"
+    ],
+    "validation_level": null,
+    "validation_status": null,
+    "verification_status": null,
+    "verification_reason": null,
+    "verifier_decision": null,
+    "cve_ids": [],
+    "cwe_ids": [],
+    "cvss": null,
+    "epss": null,
+    "kev": null,
+    "public_poc_available": null,
+    "risk_score": null,
+    "metadata": {
+      "dataflow_trace_ids": [
+        "DFT-7802ac6e4195"
+      ],
+      "dataflow_trace_refs": [
+        ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+      ],
+      "dataflow_summary": {
+        "trace_id": "DFT-7802ac6e4195",
+        "status": "sanitized-flow",
+        "vulnerability_class": "sql-injection",
+        "language": "python",
+        "source": {
+          "path": "main_protected.py",
+          "line": 14,
+          "expression": "request.form['username']",
+          "symbol": "request.form['username']"
+        },
+        "sink": {
+          "path": "main_protected.py",
+          "line": 25,
+          "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+          "symbol": "cursor.execute"
+        },
+        "sanitizer_status": "present",
+        "sanitizers": [
+          {
+            "path": "main_protected.py",
+            "line": 25,
+            "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+            "type": "sql-parameter-binding"
+          }
+        ],
+        "rule_ids": [
+          "PY.SQL.PARAM"
+        ],
+        "confidence": 0.45,
+        "artifact_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+      },
+      "dataflow_status": "sanitized-flow",
+      "dataflow_rule_ids": [
+        "PY.SQL.PARAM"
+      ],
+      "dataflow_locations": [
+        {
+          "path": "main_protected.py",
+          "start_line": 14,
+          "end_line": 14,
+          "symbol": "request.form['username']",
+          "snippet": "username = request.form['username']"
+        },
+        {
+          "path": "main_protected.py",
+          "start_line": 14,
+          "end_line": 14,
+          "symbol": null,
+          "snippet": "username = request.form['username']"
+        },
+        {
+          "path": "main_protected.py",
+          "start_line": 25,
+          "end_line": 25,
+          "symbol": "cursor.execute",
+          "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+        },
+        {
+          "path": "main_protected.py",
+          "start_line": 25,
+          "end_line": 25,
+          "symbol": "cursor.execute",
+          "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+        }
+      ],
+      "local_evidence_refs": [
+        "TCR-ae4ef9d682cf",
+        ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+      ]
+    },
+    "id": "F-038910609588"
+  },
+  {
+    "vulnerability_class": "sql-injection",
+    "severity": "high",
+    "confidence": 0.72,
+    "location": {
+      "path": "main_protected.py",
+      "start_line": 22,
+      "end_line": 22,
+      "symbol": null,
+      "snippet": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+    },
+    "title": "Potential SQL injection",
+    "evidence": [
+      "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+    ],
+    "remediation": "Use parameterized queries and avoid string interpolation for SQL.",
+    "description": "SQL string uses user-controlled input.",
+    "affected_function": null,
+    "call_path": [
+      "main_protected.py:22",
+      "sink"
+    ],
+    "tool_refs": [
+      "TCR-5ed95da5675d"
+    ],
+    "intelligence_refs": [],
+    "agent_trace_refs": [
+      "AT-601d5007ed1a",
+      "AT-03fd93f287b6"
+    ],
+    "handoff_refs": [
+      "HO-4cb04ce35db3",
+      "HO-ed6c44478c90"
+    ],
+    "validation_level": null,
+    "validation_status": null,
+    "verification_status": null,
+    "verification_reason": null,
+    "verifier_decision": null,
+    "cve_ids": [],
+    "cwe_ids": [],
+    "cvss": null,
+    "epss": null,
+    "kev": null,
+    "public_poc_available": null,
+    "risk_score": null,
+    "metadata": {},
+    "id": "F-c7a0769e5d5a"
+  },
+  {
+    "vulnerability_class": "hardcoded-secret",
+    "severity": "medium",
+    "confidence": 0.72,
+    "location": {
+      "path": "main_protected.py",
+      "start_line": 22,
+      "end_line": 22,
+      "symbol": null,
+      "snippet": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+    },
+    "title": "Potential hardcoded secret",
+    "evidence": [
+      "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '[REDACTED]'\""
+    ],
+    "remediation": "Move secrets into a managed secret store and rotate exposed credentials.",
+    "description": "Hardcoded secret-like value.",
+    "affected_function": null,
+    "call_path": [
+      "main_protected.py:22",
+      "sink"
+    ],
+    "tool_refs": [
+      "TCR-5ed95da5675d"
+    ],
+    "intelligence_refs": [],
+    "agent_trace_refs": [
+      "AT-601d5007ed1a",
+      "AT-03fd93f287b6"
+    ],
+    "handoff_refs": [
+      "HO-4cb04ce35db3",
+      "HO-ed6c44478c90"
+    ],
+    "validation_level": null,
+    "validation_status": null,
+    "verification_status": null,
+    "verification_reason": null,
+    "verifier_decision": null,
+    "cve_ids": [],
+    "cwe_ids": [],
+    "cvss": null,
+    "epss": null,
+    "kev": null,
+    "public_poc_available": null,
+    "risk_score": null,
+    "metadata": {},
+    "id": "F-b5a850ab6af5"
+  }
+]

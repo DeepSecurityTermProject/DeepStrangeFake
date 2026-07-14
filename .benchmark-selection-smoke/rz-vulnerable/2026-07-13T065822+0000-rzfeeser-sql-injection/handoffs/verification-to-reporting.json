@@ -1,0 +1,23 @@
+{
+  "from_agent": "verification",
+  "to_agent": "reporting",
+  "completed_work": "Verification decisions completed with validation-level selection.",
+  "key_findings": [
+    "accept:F-b9b7ad12aeca",
+    "accept:F-ba65738b64e8",
+    "accept:F-d639010d4bf2"
+  ],
+  "evidence_refs": [
+    "TCR-8f3739e7af25",
+    "TCR-57ed69dfd1b4",
+    "TCR-57ed69dfd1b4"
+  ],
+  "attention_points": [],
+  "suggested_next_actions": [
+    "Persist evidence chains.",
+    "Generate structured reports."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-900195f74b9d",
+  "id": "HO-ac9854ef7fec"
+}

@@ -1,0 +1,70 @@
+{
+  "vulnerability_class": "sql-injection",
+  "language": "python",
+  "path": "main_vulnerable.py",
+  "source": {
+    "path": "main_vulnerable.py",
+    "start_line": 14,
+    "end_line": 14,
+    "expression": "request.form['username']",
+    "language": "python",
+    "kind": "source",
+    "symbol": "request.form['username']",
+    "snippet": "username = request.form['username']",
+    "framework": "python-web",
+    "id": "DFN-9df902385673",
+    "source_type": "request"
+  },
+  "sink": {
+    "path": "main_vulnerable.py",
+    "start_line": 23,
+    "end_line": 23,
+    "expression": "cursor.execute(query)",
+    "language": "python",
+    "kind": "sink",
+    "symbol": "cursor.execute",
+    "snippet": "cursor.execute(query)  # Executes the query with unsanitized input",
+    "framework": null,
+    "id": "DFN-88011b69ac98",
+    "sink_type": "sql",
+    "vulnerability_class": "sql-injection"
+  },
+  "steps": [
+    {
+      "path": "main_vulnerable.py",
+      "start_line": 14,
+      "end_line": 14,
+      "expression": "username = request.form['username']",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-9df902385673",
+      "to_id": null,
+      "description": "Tainted value assigned to username.",
+      "snippet": "username = request.form['username']",
+      "id": "DFS-232a30cea296"
+    },
+    {
+      "path": "main_vulnerable.py",
+      "start_line": 22,
+      "end_line": 22,
+      "expression": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'\"",
+      "step_type": "assignment",
+      "language": "python",
+      "from_id": "DFN-9df902385673",
+      "to_id": null,
+      "description": "Tainted value assigned to query.",
+      "snippet": "query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'\"",
+      "id": "DFS-17647f14181a"
+    }
+  ],
+  "sanitizers": [],
+  "status": "complete-flow",
+  "confidence": 0.86,
+  "rule_ids": [
+    "PY.SQL.RAW"
+  ],
+  "metadata": {},
+  "explanation": "request.form['username'] reaches cursor.execute(query)",
+  "artifact_path": ".benchmark-selection-smoke\\rz-vulnerable\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-49753e7d82ef.json",
+  "id": "DFT-49753e7d82ef"
+}

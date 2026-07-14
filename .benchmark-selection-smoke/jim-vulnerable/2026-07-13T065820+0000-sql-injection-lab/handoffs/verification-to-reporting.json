@@ -1,0 +1,43 @@
+{
+  "from_agent": "verification",
+  "to_agent": "reporting",
+  "completed_work": "Verification decisions completed with validation-level selection.",
+  "key_findings": [
+    "accept:F-4fbe4bb5c565",
+    "accept:F-0a29eaf9aee3",
+    "accept:F-adc1f7a91d77",
+    "accept:F-b6c46718bc0b",
+    "accept:F-c67f9889d5a8",
+    "accept:F-16b59c5facdd",
+    "accept:F-1cf184695530",
+    "accept:F-a3b25cf4450f",
+    "accept:F-5e4923963653",
+    "accept:F-51ea1821ce61",
+    "accept:F-11ca02a48cfc",
+    "accept:F-ea94dbeb2e28",
+    "accept:F-7e390cdbf38c"
+  ],
+  "evidence_refs": [
+    "TCR-b66c18887fcd",
+    "TCR-b66c18887fcd",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5",
+    "TCR-5a0e3f4ae7d5"
+  ],
+  "attention_points": [],
+  "suggested_next_actions": [
+    "Persist evidence chains.",
+    "Generate structured reports."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-cd440485dd83",
+  "id": "HO-20e4ddada6ff"
+}

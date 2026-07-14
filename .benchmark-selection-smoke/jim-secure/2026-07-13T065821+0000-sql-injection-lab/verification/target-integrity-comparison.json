@@ -1,0 +1,11 @@
+{
+  "before_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+  "after_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+  "unchanged": true,
+  "changed_files": [],
+  "added_files": [],
+  "removed_files": [],
+  "metadata_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+  "created_at": "2026-07-13T06:58:21+00:00",
+  "id": "TIC-dfeda6b381f6"
+}

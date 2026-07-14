@@ -1,0 +1,19 @@
+{
+  "root_path": "D:\\DeepStrangeFake\\.benchmark-selection\\rzfeeser-sql-injection",
+  "phase": "after-validation",
+  "files": {
+    ".github/workflows/sql_injection_test.yml": "bff4741811c0cf8d110d613fc758b656fd0e1a7aa58a4b6c34e47165f30d37b3",
+    "LICENSE": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809",
+    "main.py": "9220246b0cdec0d0895ea2548def4efed8776488e8ae2be2616d815084d86803",
+    "main_protected.py": "74ecb20566498a69713a45951078c25b0cfb17ea38c97159014e5a28bb68a91b",
+    "main_vulnerable.py": "c0912185bc64885003bc51e5fcaad6ec45a3df22db3be29a473c63cfdc76c71a",
+    "README.md": "c46d124017d283a1bb3a7c63b342fe47f81fcac8f109be40ca159d85f7f923ab",
+    "requirements.txt": "8c31898320ee6ae51ca85f05bcd61faf1e786aeddb11d98ab420592ad4430a07",
+    "sql_builder.py": "5311cc4d53a983749b2f49efc91372ed11f00f6cb1d88c6e4f74b55d81cd1d7f",
+    "templates/login.html": "f45d33f6e1019aef743b7e2b6edae45b0f41512f62d4ca48a0ea81283b622b68",
+    "users.db": "a474bb7dfe2e22c4b8110f258f281c1c0afe5ff519237bf110eea96d8d440b1e"
+  },
+  "metadata_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+  "created_at": "2026-07-13T06:58:22+00:00",
+  "id": "TFM-19437ed0641e"
+}

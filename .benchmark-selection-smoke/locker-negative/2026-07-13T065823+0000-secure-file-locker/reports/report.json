@@ -1,0 +1,72 @@
+{
+  "target_metadata": {
+    "target": {
+      "source": ".benchmark-selection/secure-file-locker",
+      "kind": "local",
+      "path": "D:\\DeepStrangeFake\\.benchmark-selection\\secure-file-locker",
+      "url": null,
+      "owner": null,
+      "repo": null,
+      "ref": null,
+      "commit": "b2dd76f1b5d68200722f62c4935cc8ed0c80a59e"
+    },
+    "root_path": "D:\\DeepStrangeFake\\.benchmark-selection\\secure-file-locker",
+    "commit": "b2dd76f1b5d68200722f62c4935cc8ed0c80a59e",
+    "dominant_language": "Python",
+    "languages": {
+      "Python": 1248
+    },
+    "file_tree": [
+      "app.py"
+    ],
+    "file_categories": {
+      "app.py": "product-code"
+    },
+    "dependencies": [],
+    "attack_surfaces": [
+      {
+        "kind": "route",
+        "path": "app.py",
+        "start_line": 36,
+        "end_line": 36,
+        "symbol": null,
+        "detail": "@app.route(\"/file\")"
+      }
+    ],
+    "generated_at": "2026-07-13T06:58:23+00:00"
+  },
+  "executive_summary": {
+    "target": ".benchmark-selection/secure-file-locker",
+    "finding_count": 0,
+    "verification_candidate_count": 0,
+    "validated_count": 0,
+    "confirmed_count": 0,
+    "likely_count": 0,
+    "rejected_count": 0,
+    "manual_required_count": 0,
+    "languages": {
+      "Python": 1248
+    },
+    "source_category_distribution": {}
+  },
+  "findings": [],
+  "evidence_chains": [],
+  "verification_candidates": [],
+  "runtime": {
+    "kernel": {
+      "name": "AgentRuntime",
+      "state_ref": ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\runtime_state\\state.json",
+      "task_count": 7,
+      "roles": [
+        "analysis",
+        "orchestrator",
+        "recon",
+        "reporting",
+        "validation",
+        "verification"
+      ]
+    }
+  },
+  "run_status": "completed",
+  "generated_at": "2026-07-13T06:58:23+00:00"
+}

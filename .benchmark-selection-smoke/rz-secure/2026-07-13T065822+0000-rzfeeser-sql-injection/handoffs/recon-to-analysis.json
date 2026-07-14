@@ -1,0 +1,22 @@
+{
+  "from_agent": "recon",
+  "to_agent": "analysis",
+  "completed_work": "Repository and attack-surface reconnaissance completed.",
+  "key_findings": [
+    "route:main_protected.py:7",
+    "route:main_protected.py:12",
+    "database-access:main_protected.py:22",
+    "hardcoded-secret:main_protected.py:22",
+    "database-access:main_protected.py:23",
+    "database-access:main_protected.py:25"
+  ],
+  "evidence_refs": [],
+  "attention_points": [],
+  "suggested_next_actions": [
+    "Prioritize source sinks with local evidence.",
+    "Treat CVE intelligence as context."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-601d5007ed1a",
+  "id": "HO-4cb04ce35db3"
+}

@@ -1,0 +1,859 @@
+{
+  "finding_id": "F-038910609588",
+  "source_locations": [
+    {
+      "path": "main_protected.py",
+      "start_line": 25,
+      "end_line": 25,
+      "symbol": "cursor.execute",
+      "snippet": "request.form['username'] -> cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+    },
+    {
+      "path": "main_protected.py",
+      "start_line": 14,
+      "end_line": 14,
+      "symbol": "request.form['username']",
+      "snippet": "username = request.form['username']"
+    }
+  ],
+  "vulnerability_class": "sql-injection",
+  "analysis_rationale": "Dataflow trace shows request.form['username'] reaching cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).",
+  "verification": {
+    "finding": {
+      "vulnerability_class": "sql-injection",
+      "severity": "high",
+      "confidence": 0.45,
+      "location": {
+        "path": "main_protected.py",
+        "start_line": 25,
+        "end_line": 25,
+        "symbol": "cursor.execute",
+        "snippet": "request.form['username'] -> cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+      },
+      "title": "Potential SQL injection",
+      "evidence": [
+        "request.form['username'] -> cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+      ],
+      "remediation": "Use parameterized queries and avoid string interpolation for SQL.",
+      "description": "Dataflow trace shows request.form['username'] reaching cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).",
+      "affected_function": null,
+      "call_path": [
+        "source:main_protected.py:14:request.form['username']",
+        "assignment:main_protected.py:14:username = request.form['username']",
+        "sanitizer:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+        "sink:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+      ],
+      "tool_refs": [
+        "TCR-ae4ef9d682cf"
+      ],
+      "intelligence_refs": [],
+      "agent_trace_refs": [
+        "AT-601d5007ed1a",
+        "AT-03fd93f287b6",
+        "AT-900195f74b9d"
+      ],
+      "handoff_refs": [
+        "HO-4cb04ce35db3",
+        "HO-ed6c44478c90",
+        "HO-ac9854ef7fec"
+      ],
+      "validation_level": "manual",
+      "validation_status": "rejected",
+      "verification_status": "rejected",
+      "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+      "verifier_decision": "reject",
+      "cve_ids": [],
+      "cwe_ids": [],
+      "cvss": null,
+      "epss": null,
+      "kev": null,
+      "public_poc_available": null,
+      "risk_score": null,
+      "metadata": {
+        "dataflow_trace_ids": [
+          "DFT-7802ac6e4195"
+        ],
+        "dataflow_trace_refs": [
+          ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+        ],
+        "dataflow_summary": {
+          "trace_id": "DFT-7802ac6e4195",
+          "status": "sanitized-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "main_protected.py",
+            "line": 14,
+            "expression": "request.form['username']",
+            "symbol": "request.form['username']"
+          },
+          "sink": {
+            "path": "main_protected.py",
+            "line": 25,
+            "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+            "symbol": "cursor.execute"
+          },
+          "sanitizer_status": "present",
+          "sanitizers": [
+            {
+              "path": "main_protected.py",
+              "line": 25,
+              "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+              "type": "sql-parameter-binding"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.PARAM"
+          ],
+          "confidence": 0.45,
+          "artifact_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+        },
+        "dataflow_status": "sanitized-flow",
+        "dataflow_rule_ids": [
+          "PY.SQL.PARAM"
+        ],
+        "dataflow_locations": [
+          {
+            "path": "main_protected.py",
+            "start_line": 14,
+            "end_line": 14,
+            "symbol": "request.form['username']",
+            "snippet": "username = request.form['username']"
+          },
+          {
+            "path": "main_protected.py",
+            "start_line": 14,
+            "end_line": 14,
+            "symbol": null,
+            "snippet": "username = request.form['username']"
+          },
+          {
+            "path": "main_protected.py",
+            "start_line": 25,
+            "end_line": 25,
+            "symbol": "cursor.execute",
+            "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+          },
+          {
+            "path": "main_protected.py",
+            "start_line": 25,
+            "end_line": 25,
+            "symbol": "cursor.execute",
+            "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+          }
+        ],
+        "local_evidence_refs": [
+          "TCR-ae4ef9d682cf",
+          ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+        ],
+        "decision_source": "deterministic",
+        "runtime_task_refs": [
+          "TSK-d419efdb168d",
+          "TSK-2d897190cff4",
+          "TSK-0282ccc9cc73",
+          "TSK-cf8966b2716e",
+          "TSK-4c90844163dc",
+          "TSK-151ac6f0a7f5"
+        ],
+        "prompt_refs": [],
+        "llm_response_refs": [],
+        "message_refs": [],
+        "memory_refs": [],
+        "mcp_call_refs": [],
+        "tool_call_refs": [],
+        "decision_refs": [],
+        "verification_status": "rejected",
+        "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+        "validation_summary": {
+          "finding_id": "F-038910609588",
+          "level": "manual",
+          "status": "rejected",
+          "command": null,
+          "command_argv": [],
+          "verification_status": "rejected",
+          "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+          "judge_reason": "",
+          "exit_code": null,
+          "timed_out": false,
+          "stdout_preview": "",
+          "stderr_preview": "",
+          "poc_refs": [],
+          "sandbox_result_refs": [],
+          "attempt_refs": [],
+          "environment": {},
+          "artifacts": [
+            "TCR-ae4ef9d682cf",
+            ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+            ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-before.json",
+            ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+            ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-integrity-comparison.json"
+          ],
+          "repair_attempt_count": 0,
+          "classifications": [],
+          "repair_timeline": [],
+          "semantic_integrity_status": "",
+          "safety_status": "",
+          "provisional_status": "rejected",
+          "final_status": "rejected",
+          "integrity_summary": {
+            "unchanged": true,
+            "before_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-before.json",
+            "after_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+            "comparison_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-integrity-comparison.json",
+            "changed_count": 0,
+            "added_count": 0,
+            "removed_count": 0,
+            "changed_files": [],
+            "added_files": [],
+            "removed_files": []
+          },
+          "final_stop_reason": "",
+          "message": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+          "timestamp": "2026-07-13T06:58:22+00:00"
+        }
+      },
+      "id": "F-038910609588"
+    },
+    "decision": "reject",
+    "reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+    "confidence": 0.45,
+    "validation_level": "manual",
+    "priority": "low",
+    "intelligence_refs": [],
+    "decision_source": "deterministic",
+    "llm_confidence": null,
+    "policy_gate": {},
+    "prompt_refs": [],
+    "llm_response_refs": [],
+    "fallback_reason": "",
+    "finding_id": "F-038910609588",
+    "created_at": "2026-07-13T06:58:22+00:00"
+  },
+  "validation": {
+    "finding_id": "F-038910609588",
+    "level": "manual",
+    "status": "rejected",
+    "command": null,
+    "command_argv": [],
+    "verification_status": "rejected",
+    "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+    "judge_reason": "",
+    "exit_code": null,
+    "timed_out": false,
+    "stdout_preview": "",
+    "stderr_preview": "",
+    "poc_refs": [],
+    "sandbox_result_refs": [],
+    "attempt_refs": [],
+    "environment": {},
+    "artifacts": [
+      "TCR-ae4ef9d682cf",
+      ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+      ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-before.json",
+      ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+      ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-integrity-comparison.json"
+    ],
+    "repair_attempt_count": 0,
+    "classifications": [],
+    "repair_timeline": [],
+    "semantic_integrity_status": "",
+    "safety_status": "",
+    "provisional_status": "rejected",
+    "final_status": "rejected",
+    "integrity_summary": {
+      "unchanged": true,
+      "before_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-before.json",
+      "after_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+      "comparison_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-integrity-comparison.json",
+      "changed_count": 0,
+      "added_count": 0,
+      "removed_count": 0,
+      "changed_files": [],
+      "added_files": [],
+      "removed_files": []
+    },
+    "final_stop_reason": "",
+    "message": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+    "timestamp": "2026-07-13T06:58:22+00:00"
+  },
+  "intelligence_refs": [],
+  "artifact_refs": [
+    "TCR-ae4ef9d682cf",
+    ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+    ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-before.json",
+    ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-manifest-after.json",
+    ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\verification\\target-integrity-comparison.json"
+  ],
+  "tool_refs": [
+    {
+      "kind": "tool",
+      "path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\evidence\\tool-TCR-ae4ef9d682cf.json",
+      "payload": {
+        "request_id": "TC-24bc41820839",
+        "tool_name": "dataflow-scanner",
+        "success": true,
+        "status": "ok",
+        "message": "1 dataflow observations",
+        "observations": [
+          {
+            "tool_name": "dataflow-scanner",
+            "kind": "dataflow-sanitized-flow",
+            "message": "request.form['username'] reaches cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)) through sanitizer",
+            "path": "main_protected.py",
+            "line": 25,
+            "severity": "high",
+            "vulnerability_class": "sql-injection",
+            "evidence": "request.form['username'] -> cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+            "success": true,
+            "degraded": false,
+            "raw": {
+              "dataflow_trace_id": "DFT-7802ac6e4195",
+              "dataflow_trace_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+              "dataflow_status": "sanitized-flow",
+              "dataflow_summary": {
+                "trace_id": "DFT-7802ac6e4195",
+                "status": "sanitized-flow",
+                "vulnerability_class": "sql-injection",
+                "language": "python",
+                "source": {
+                  "path": "main_protected.py",
+                  "line": 14,
+                  "expression": "request.form['username']",
+                  "symbol": "request.form['username']"
+                },
+                "sink": {
+                  "path": "main_protected.py",
+                  "line": 25,
+                  "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                  "symbol": "cursor.execute"
+                },
+                "sanitizer_status": "present",
+                "sanitizers": [
+                  {
+                    "path": "main_protected.py",
+                    "line": 25,
+                    "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                    "type": "sql-parameter-binding"
+                  }
+                ],
+                "rule_ids": [
+                  "PY.SQL.PARAM"
+                ],
+                "confidence": 0.45,
+                "artifact_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+              },
+              "call_path": [
+                "source:main_protected.py:14:request.form['username']",
+                "assignment:main_protected.py:14:username = request.form['username']",
+                "sanitizer:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                "sink:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+              ],
+              "dataflow_locations": [
+                {
+                  "path": "main_protected.py",
+                  "start_line": 14,
+                  "end_line": 14,
+                  "symbol": "request.form['username']",
+                  "snippet": "username = request.form['username']"
+                },
+                {
+                  "path": "main_protected.py",
+                  "start_line": 14,
+                  "end_line": 14,
+                  "symbol": null,
+                  "snippet": "username = request.form['username']"
+                },
+                {
+                  "path": "main_protected.py",
+                  "start_line": 25,
+                  "end_line": 25,
+                  "symbol": "cursor.execute",
+                  "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+                },
+                {
+                  "path": "main_protected.py",
+                  "start_line": 25,
+                  "end_line": 25,
+                  "symbol": "cursor.execute",
+                  "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+                }
+              ],
+              "rule_ids": [
+                "PY.SQL.PARAM"
+              ],
+              "sanitizer_status": "present",
+              "trace_artifact": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+              "trace_payload_stored_in_artifact": true,
+              "trace_inline_preview": {
+                "trace_id": "DFT-7802ac6e4195",
+                "status": "sanitized-flow",
+                "vulnerability_class": "sql-injection",
+                "language": "python",
+                "source": {
+                  "path": "main_protected.py",
+                  "line": 14,
+                  "expression": "request.form['username']",
+                  "symbol": "request.form['username']"
+                },
+                "sink": {
+                  "path": "main_protected.py",
+                  "line": 25,
+                  "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                  "symbol": "cursor.execute"
+                },
+                "sanitizer_status": "present",
+                "sanitizers": [
+                  {
+                    "path": "main_protected.py",
+                    "line": 25,
+                    "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                    "type": "sql-parameter-binding"
+                  }
+                ],
+                "rule_ids": [
+                  "PY.SQL.PARAM"
+                ],
+                "confidence": 0.45,
+                "artifact_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+              }
+            }
+          }
+        ],
+        "output": {
+          "tool_name": "dataflow-scanner",
+          "inputs": {
+            "target": ".benchmark-selection/rzfeeser-sql-injection",
+            "file_count": 1,
+            "scanned_files": 1,
+            "max_files": 500,
+            "max_traces": 200
+          },
+          "success": true,
+          "exit_status": 0,
+          "duration_ms": 0,
+          "artifact_paths": [
+            ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+          ],
+          "observations": [
+            {
+              "tool_name": "dataflow-scanner",
+              "kind": "dataflow-sanitized-flow",
+              "message": "request.form['username'] reaches cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)) through sanitizer",
+              "path": "main_protected.py",
+              "line": 25,
+              "severity": "high",
+              "vulnerability_class": "sql-injection",
+              "evidence": "request.form['username'] -> cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+              "success": true,
+              "degraded": false,
+              "raw": {
+                "dataflow_trace_id": "DFT-7802ac6e4195",
+                "dataflow_trace_ref": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+                "dataflow_status": "sanitized-flow",
+                "dataflow_summary": {
+                  "trace_id": "DFT-7802ac6e4195",
+                  "status": "sanitized-flow",
+                  "vulnerability_class": "sql-injection",
+                  "language": "python",
+                  "source": {
+                    "path": "main_protected.py",
+                    "line": 14,
+                    "expression": "request.form['username']",
+                    "symbol": "request.form['username']"
+                  },
+                  "sink": {
+                    "path": "main_protected.py",
+                    "line": 25,
+                    "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                    "symbol": "cursor.execute"
+                  },
+                  "sanitizer_status": "present",
+                  "sanitizers": [
+                    {
+                      "path": "main_protected.py",
+                      "line": 25,
+                      "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                      "type": "sql-parameter-binding"
+                    }
+                  ],
+                  "rule_ids": [
+                    "PY.SQL.PARAM"
+                  ],
+                  "confidence": 0.45,
+                  "artifact_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+                },
+                "call_path": [
+                  "source:main_protected.py:14:request.form['username']",
+                  "assignment:main_protected.py:14:username = request.form['username']",
+                  "sanitizer:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                  "sink:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+                ],
+                "dataflow_locations": [
+                  {
+                    "path": "main_protected.py",
+                    "start_line": 14,
+                    "end_line": 14,
+                    "symbol": "request.form['username']",
+                    "snippet": "username = request.form['username']"
+                  },
+                  {
+                    "path": "main_protected.py",
+                    "start_line": 14,
+                    "end_line": 14,
+                    "symbol": null,
+                    "snippet": "username = request.form['username']"
+                  },
+                  {
+                    "path": "main_protected.py",
+                    "start_line": 25,
+                    "end_line": 25,
+                    "symbol": "cursor.execute",
+                    "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+                  },
+                  {
+                    "path": "main_protected.py",
+                    "start_line": 25,
+                    "end_line": 25,
+                    "symbol": "cursor.execute",
+                    "snippet": "cursor.execute(\"SELECT * FROM users WHERE username = ? AND password = ?\", (username, password))"
+                  }
+                ],
+                "rule_ids": [
+                  "PY.SQL.PARAM"
+                ],
+                "sanitizer_status": "present",
+                "trace_artifact": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+                "trace_payload_stored_in_artifact": true,
+                "trace_inline_preview": {
+                  "trace_id": "DFT-7802ac6e4195",
+                  "status": "sanitized-flow",
+                  "vulnerability_class": "sql-injection",
+                  "language": "python",
+                  "source": {
+                    "path": "main_protected.py",
+                    "line": 14,
+                    "expression": "request.form['username']",
+                    "symbol": "request.form['username']"
+                  },
+                  "sink": {
+                    "path": "main_protected.py",
+                    "line": 25,
+                    "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                    "symbol": "cursor.execute"
+                  },
+                  "sanitizer_status": "present",
+                  "sanitizers": [
+                    {
+                      "path": "main_protected.py",
+                      "line": 25,
+                      "expression": "cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+                      "type": "sql-parameter-binding"
+                    }
+                  ],
+                  "rule_ids": [
+                    "PY.SQL.PARAM"
+                  ],
+                  "confidence": 0.45,
+                  "artifact_path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+                }
+              }
+            }
+          ],
+          "message": "1 dataflow observations",
+          "id": "TR-8dd19d2f658e"
+        },
+        "duration_ms": 0,
+        "artifact_paths": [
+          ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json",
+          ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\dataflow-scanner-TCR-ae4ef9d682cf.json"
+        ],
+        "raw": {},
+        "created_at": "2026-07-13T06:58:22+00:00",
+        "id": "TCR-ae4ef9d682cf"
+      }
+    },
+    {
+      "kind": "tool",
+      "path": ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\evidence\\tool-TCR-5ed95da5675d.json",
+      "payload": {
+        "request_id": "TC-ba80c0298cbd",
+        "tool_name": "pattern-scanner",
+        "success": true,
+        "status": "ok",
+        "message": "2 observations",
+        "observations": [
+          {
+            "tool_name": "pattern-scanner",
+            "kind": "sast-warning",
+            "message": "SQL string uses user-controlled input.",
+            "path": "main_protected.py",
+            "line": 22,
+            "severity": "high",
+            "vulnerability_class": "sql-injection",
+            "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'\"",
+            "success": true,
+            "degraded": false,
+            "raw": {}
+          },
+          {
+            "tool_name": "pattern-scanner",
+            "kind": "sast-warning",
+            "message": "Hardcoded secret-like value.",
+            "path": "main_protected.py",
+            "line": 22,
+            "severity": "medium",
+            "vulnerability_class": "hardcoded-secret",
+            "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'\"",
+            "success": true,
+            "degraded": false,
+            "raw": {}
+          }
+        ],
+        "output": {
+          "tool_name": "pattern-scanner",
+          "inputs": {
+            "target": ".benchmark-selection/rzfeeser-sql-injection",
+            "file_count": 1
+          },
+          "success": true,
+          "exit_status": 0,
+          "duration_ms": 0,
+          "artifact_paths": [],
+          "observations": [
+            {
+              "tool_name": "pattern-scanner",
+              "kind": "sast-warning",
+              "message": "SQL string uses user-controlled input.",
+              "path": "main_protected.py",
+              "line": 22,
+              "severity": "high",
+              "vulnerability_class": "sql-injection",
+              "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'\"",
+              "success": true,
+              "degraded": false,
+              "raw": {}
+            },
+            {
+              "tool_name": "pattern-scanner",
+              "kind": "sast-warning",
+              "message": "Hardcoded secret-like value.",
+              "path": "main_protected.py",
+              "line": 22,
+              "severity": "medium",
+              "vulnerability_class": "hardcoded-secret",
+              "evidence": "# query = f\"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'\"",
+              "success": true,
+              "degraded": false,
+              "raw": {}
+            }
+          ],
+          "message": "2 observations",
+          "id": "TR-1ab1e523935b"
+        },
+        "duration_ms": 0,
+        "artifact_paths": [
+          ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\tool_outputs\\broker\\pattern-scanner-TCR-5ed95da5675d.json"
+        ],
+        "raw": {},
+        "created_at": "2026-07-13T06:58:22+00:00",
+        "id": "TCR-5ed95da5675d"
+      }
+    }
+  ],
+  "dataflow_trace_refs": [
+    ".benchmark-selection-smoke\\rz-secure\\2026-07-13T065822+0000-rzfeeser-sql-injection\\dataflow\\traces\\DFT-7802ac6e4195.json"
+  ],
+  "agent_traces": [
+    {
+      "agent_name": "recon",
+      "reasoning_summary": "Mapped project structure, dependencies, attack surfaces, and contextual CVE intelligence.",
+      "prompt": "",
+      "selected_context_refs": [
+        "main_protected.py"
+      ],
+      "model_metadata": {
+        "provider": "mock",
+        "model": "deterministic-local"
+      },
+      "raw_response": "",
+      "react_steps": [
+        {
+          "action": "inspect_metadata",
+          "observed_files": 1
+        },
+        {
+          "action": "inspect_attack_surface",
+          "observed_surfaces": 6
+        }
+      ],
+      "tool_calls": [
+        {
+          "tool": "cve-mcp-server",
+          "mode": "contextual",
+          "count": 0
+        }
+      ],
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "AT-601d5007ed1a"
+    },
+    {
+      "agent_name": "analysis",
+      "reasoning_summary": "Converted deterministic tool observations and contextual CVE/CWE intelligence into candidate findings.",
+      "prompt": "",
+      "selected_context_refs": [
+        "main_protected.py",
+        "main_protected.py",
+        "main_protected.py"
+      ],
+      "model_metadata": {
+        "provider": "mock",
+        "model": "deterministic-local"
+      },
+      "raw_response": "deterministic-analysis",
+      "react_steps": [
+        {
+          "action": "consume_recon_handoff",
+          "handoff": "HO-4cb04ce35db3"
+        },
+        {
+          "action": "review_tool_results",
+          "tool_result_count": 2
+        },
+        {
+          "action": "emit_candidates",
+          "candidate_count": 3
+        }
+      ],
+      "tool_calls": [
+        {
+          "tool": "dataflow-scanner",
+          "result_id": "TCR-ae4ef9d682cf",
+          "observations": 1
+        },
+        {
+          "tool": "pattern-scanner",
+          "result_id": "TCR-5ed95da5675d",
+          "observations": 2
+        }
+      ],
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "AT-03fd93f287b6"
+    },
+    {
+      "agent_name": "verification",
+      "reasoning_summary": "Independently reviewed candidates, rejected weak evidence, and selected validation levels.",
+      "prompt": "",
+      "selected_context_refs": [
+        "main_protected.py",
+        "main_protected.py",
+        "main_protected.py"
+      ],
+      "model_metadata": {
+        "provider": "mock",
+        "model": "deterministic-local"
+      },
+      "raw_response": "deterministic-verification",
+      "react_steps": [
+        {
+          "action": "review_candidates",
+          "candidate_count": 3
+        },
+        {
+          "action": "emit_decisions",
+          "accepted": 2,
+          "rejected": 1
+        }
+      ],
+      "tool_calls": [
+        {
+          "tool": "cve-mcp-server",
+          "mode": "prioritization",
+          "count": 0
+        }
+      ],
+      "created_at": "2026-07-13T06:58:22+00:00",
+      "id": "AT-900195f74b9d"
+    }
+  ],
+  "handoffs": [
+    {
+      "from_agent": "recon",
+      "to_agent": "analysis",
+      "completed_work": "Repository and attack-surface reconnaissance completed.",
+      "key_findings": [
+        "route:main_protected.py:7",
+        "route:main_protected.py:12",
+        "database-access:main_protected.py:22",
+        "hardcoded-secret:main_protected.py:22",
+        "database-access:main_protected.py:23",
+        "database-access:main_protected.py:25"
+      ],
+      "evidence_refs": [],
+      "attention_points": [],
+      "suggested_next_actions": [
+        "Prioritize source sinks with local evidence.",
+        "Treat CVE intelligence as context."
+      ],
+      "intelligence_refs": [],
+      "trace_id": "AT-601d5007ed1a",
+      "id": "HO-4cb04ce35db3"
+    },
+    {
+      "from_agent": "analysis",
+      "to_agent": "verification",
+      "completed_work": "Candidate findings generated from local tool evidence and contextual intelligence.",
+      "key_findings": [
+        "F-038910609588",
+        "F-c7a0769e5d5a",
+        "F-b5a850ab6af5"
+      ],
+      "evidence_refs": [
+        "TCR-5ed95da5675d",
+        "TCR-ae4ef9d682cf"
+      ],
+      "attention_points": [
+        "Reject intelligence-only matches without local evidence."
+      ],
+      "suggested_next_actions": [
+        "Independently verify local evidence.",
+        "Select safe validation level."
+      ],
+      "intelligence_refs": [],
+      "trace_id": "AT-03fd93f287b6",
+      "id": "HO-ed6c44478c90"
+    },
+    {
+      "from_agent": "verification",
+      "to_agent": "reporting",
+      "completed_work": "Verification decisions completed with validation-level selection.",
+      "key_findings": [
+        "reject:F-038910609588",
+        "accept:F-c7a0769e5d5a",
+        "accept:F-b5a850ab6af5"
+      ],
+      "evidence_refs": [
+        "TCR-ae4ef9d682cf",
+        "TCR-5ed95da5675d",
+        "TCR-5ed95da5675d"
+      ],
+      "attention_points": [
+        "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace."
+      ],
+      "suggested_next_actions": [
+        "Persist evidence chains.",
+        "Generate structured reports."
+      ],
+      "intelligence_refs": [],
+      "trace_id": "AT-900195f74b9d",
+      "id": "HO-ac9854ef7fec"
+    }
+  ],
+  "call_path": [
+    "source:main_protected.py:14:request.form['username']",
+    "assignment:main_protected.py:14:username = request.form['username']",
+    "sanitizer:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))",
+    "sink:main_protected.py:25:cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))"
+  ],
+  "created_at": "2026-07-13T06:58:22+00:00",
+  "id": "EC-320d49be81e9"
+}

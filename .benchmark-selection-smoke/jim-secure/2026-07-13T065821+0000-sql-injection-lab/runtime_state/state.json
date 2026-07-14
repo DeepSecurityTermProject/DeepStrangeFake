@@ -1,0 +1,215 @@
+{
+  "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+  "target": ".benchmark-selection/sql-injection-lab",
+  "status": "succeeded",
+  "config_summary": {
+    "runtime_enabled": false,
+    "llm_provider": "mock",
+    "llm_decisions": false,
+    "poc_repair": false,
+    "poc_repair_source": "default"
+  },
+  "tasks": [
+    {
+      "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+      "role": "orchestrator",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\metadata\\plan.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\metadata\\plan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-2f6c9cb2ed7e"
+    },
+    {
+      "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+      "role": "analysis",
+      "kind": "tool",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "TCR-f879280a61b2",
+        "TCR-82826db7157a"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\broker\\dataflow-scanner-TCR-f879280a61b2.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\dataflow-scan.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\broker\\pattern-scanner-TCR-82826db7157a.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\pattern-scan.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-05ad1f8b94cd"
+    },
+    {
+      "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+      "role": "recon",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "HO-e396e7122765"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\agent_traces\\recon.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\handoffs\\recon-to-analysis.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-e53464348640"
+    },
+    {
+      "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+      "role": "analysis",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "F-3bb38db97d31"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\agent_traces\\analysis.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\handoffs\\analysis-to-verification.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\findings\\candidates.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-32d22378a5bd"
+    },
+    {
+      "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+      "role": "verification",
+      "kind": "agent",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "F-3bb38db97d31"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\agent_traces\\verification.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\handoffs\\verification-to-reporting.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\findings\\verification.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-1983ff04d11d"
+    },
+    {
+      "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+      "role": "validation",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        "EC-f95579a7e692"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+        "TCR-f879280a61b2",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-5703eed4cc35"
+    },
+    {
+      "run_id": "2026-07-13T065821+0000-sql-injection-lab",
+      "role": "reporting",
+      "kind": "service",
+      "status": "succeeded",
+      "input_refs": [],
+      "output_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\report.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\report.md",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+      ],
+      "artifact_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\report.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\report.md",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+      ],
+      "message_refs": [],
+      "error": "",
+      "fallback_reason": "",
+      "started_at": "2026-07-13T06:58:21+00:00",
+      "finished_at": "2026-07-13T06:58:21+00:00",
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "TSK-f8c54b817b41"
+    }
+  ],
+  "artifact_refs": [
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\metadata\\repository.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\metadata\\plan.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\broker\\dataflow-scanner-TCR-f879280a61b2.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\dataflow-scan.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\broker\\pattern-scanner-TCR-82826db7157a.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\pattern-scan.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\agent_traces\\recon.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\handoffs\\recon-to-analysis.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\agent_traces\\analysis.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\handoffs\\analysis-to-verification.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\findings\\candidates.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\agent_traces\\verification.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\handoffs\\verification-to-reporting.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\findings\\verification.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+    "TCR-f879280a61b2",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\report.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\report.md",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+  ],
+  "message_refs": [],
+  "final_summary": {
+    "run_dir": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab",
+    "candidate_count": 1,
+    "rejected_count": 1,
+    "validated_count": 0,
+    "confirmed_count": 0,
+    "likely_count": 0,
+    "manual_required_count": 0,
+    "validation_level_distribution": {
+      "static-only": 0
+    },
+    "runtime_state_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\runtime_state\\state.json",
+    "resource_summary_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\reports\\run-resource-summary.v1.json"
+  },
+  "error": "",
+  "started_at": "2026-07-13T06:58:21+00:00",
+  "finished_at": "2026-07-13T06:58:21+00:00",
+  "created_at": "2026-07-13T06:58:21+00:00"
+}

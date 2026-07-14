@@ -1,0 +1,283 @@
+{
+  "request_id": "TC-d830cc03f6f3",
+  "tool_name": "dataflow-scanner",
+  "success": true,
+  "status": "ok",
+  "message": "1 dataflow observations",
+  "observations": [
+    {
+      "tool_name": "dataflow-scanner",
+      "kind": "dataflow-sanitized-flow",
+      "message": "request.args.get('id', '1') reaches db.execute(query, (user_id,)) through sanitizer",
+      "path": "python/secure_app.py",
+      "line": 123,
+      "severity": "high",
+      "vulnerability_class": "sql-injection",
+      "evidence": "request.args.get('id', '1') -> db.execute(query, (user_id,))",
+      "success": true,
+      "degraded": false,
+      "raw": {
+        "dataflow_trace_id": "DFT-dbfc6d245c92",
+        "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+        "dataflow_status": "sanitized-flow",
+        "dataflow_summary": {
+          "trace_id": "DFT-dbfc6d245c92",
+          "status": "sanitized-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "python/secure_app.py",
+            "line": 119,
+            "expression": "request.args.get('id', '1')",
+            "symbol": "request.args.get('id', '1')"
+          },
+          "sink": {
+            "path": "python/secure_app.py",
+            "line": 123,
+            "expression": "db.execute(query, (user_id,))",
+            "symbol": "db.execute"
+          },
+          "sanitizer_status": "present",
+          "sanitizers": [
+            {
+              "path": "python/secure_app.py",
+              "line": 123,
+              "expression": "db.execute(query, (user_id,))",
+              "type": "sql-parameter-binding"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.PARAM"
+          ],
+          "confidence": 0.45,
+          "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+        },
+        "call_path": [
+          "source:python/secure_app.py:119:request.args.get('id', '1')",
+          "assignment:python/secure_app.py:119:user_id = request.args.get('id', '1')",
+          "sanitizer:python/secure_app.py:123:db.execute(query, (user_id,))",
+          "sink:python/secure_app.py:123:db.execute(query, (user_id,))"
+        ],
+        "dataflow_locations": [
+          {
+            "path": "python/secure_app.py",
+            "start_line": 119,
+            "end_line": 119,
+            "symbol": "request.args.get('id', '1')",
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/secure_app.py",
+            "start_line": 119,
+            "end_line": 119,
+            "symbol": null,
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/secure_app.py",
+            "start_line": 123,
+            "end_line": 123,
+            "symbol": "db.execute",
+            "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+          },
+          {
+            "path": "python/secure_app.py",
+            "start_line": 123,
+            "end_line": 123,
+            "symbol": "db.execute",
+            "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+          }
+        ],
+        "rule_ids": [
+          "PY.SQL.PARAM"
+        ],
+        "sanitizer_status": "present",
+        "trace_artifact": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+        "trace_payload_stored_in_artifact": true,
+        "trace_inline_preview": {
+          "trace_id": "DFT-dbfc6d245c92",
+          "status": "sanitized-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "python/secure_app.py",
+            "line": 119,
+            "expression": "request.args.get('id', '1')",
+            "symbol": "request.args.get('id', '1')"
+          },
+          "sink": {
+            "path": "python/secure_app.py",
+            "line": 123,
+            "expression": "db.execute(query, (user_id,))",
+            "symbol": "db.execute"
+          },
+          "sanitizer_status": "present",
+          "sanitizers": [
+            {
+              "path": "python/secure_app.py",
+              "line": 123,
+              "expression": "db.execute(query, (user_id,))",
+              "type": "sql-parameter-binding"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.PARAM"
+          ],
+          "confidence": 0.45,
+          "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+        }
+      }
+    }
+  ],
+  "output": {
+    "tool_name": "dataflow-scanner",
+    "inputs": {
+      "target": ".benchmark-selection/sql-injection-lab",
+      "file_count": 1,
+      "scanned_files": 1,
+      "max_files": 500,
+      "max_traces": 200
+    },
+    "success": true,
+    "exit_status": 0,
+    "duration_ms": 0,
+    "artifact_paths": [
+      ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+    ],
+    "observations": [
+      {
+        "tool_name": "dataflow-scanner",
+        "kind": "dataflow-sanitized-flow",
+        "message": "request.args.get('id', '1') reaches db.execute(query, (user_id,)) through sanitizer",
+        "path": "python/secure_app.py",
+        "line": 123,
+        "severity": "high",
+        "vulnerability_class": "sql-injection",
+        "evidence": "request.args.get('id', '1') -> db.execute(query, (user_id,))",
+        "success": true,
+        "degraded": false,
+        "raw": {
+          "dataflow_trace_id": "DFT-dbfc6d245c92",
+          "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+          "dataflow_status": "sanitized-flow",
+          "dataflow_summary": {
+            "trace_id": "DFT-dbfc6d245c92",
+            "status": "sanitized-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "python/secure_app.py",
+              "line": 119,
+              "expression": "request.args.get('id', '1')",
+              "symbol": "request.args.get('id', '1')"
+            },
+            "sink": {
+              "path": "python/secure_app.py",
+              "line": 123,
+              "expression": "db.execute(query, (user_id,))",
+              "symbol": "db.execute"
+            },
+            "sanitizer_status": "present",
+            "sanitizers": [
+              {
+                "path": "python/secure_app.py",
+                "line": 123,
+                "expression": "db.execute(query, (user_id,))",
+                "type": "sql-parameter-binding"
+              }
+            ],
+            "rule_ids": [
+              "PY.SQL.PARAM"
+            ],
+            "confidence": 0.45,
+            "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+          },
+          "call_path": [
+            "source:python/secure_app.py:119:request.args.get('id', '1')",
+            "assignment:python/secure_app.py:119:user_id = request.args.get('id', '1')",
+            "sanitizer:python/secure_app.py:123:db.execute(query, (user_id,))",
+            "sink:python/secure_app.py:123:db.execute(query, (user_id,))"
+          ],
+          "dataflow_locations": [
+            {
+              "path": "python/secure_app.py",
+              "start_line": 119,
+              "end_line": 119,
+              "symbol": "request.args.get('id', '1')",
+              "snippet": "user_id = request.args.get('id', '1')"
+            },
+            {
+              "path": "python/secure_app.py",
+              "start_line": 119,
+              "end_line": 119,
+              "symbol": null,
+              "snippet": "user_id = request.args.get('id', '1')"
+            },
+            {
+              "path": "python/secure_app.py",
+              "start_line": 123,
+              "end_line": 123,
+              "symbol": "db.execute",
+              "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+            },
+            {
+              "path": "python/secure_app.py",
+              "start_line": 123,
+              "end_line": 123,
+              "symbol": "db.execute",
+              "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.PARAM"
+          ],
+          "sanitizer_status": "present",
+          "trace_artifact": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+          "trace_payload_stored_in_artifact": true,
+          "trace_inline_preview": {
+            "trace_id": "DFT-dbfc6d245c92",
+            "status": "sanitized-flow",
+            "vulnerability_class": "sql-injection",
+            "language": "python",
+            "source": {
+              "path": "python/secure_app.py",
+              "line": 119,
+              "expression": "request.args.get('id', '1')",
+              "symbol": "request.args.get('id', '1')"
+            },
+            "sink": {
+              "path": "python/secure_app.py",
+              "line": 123,
+              "expression": "db.execute(query, (user_id,))",
+              "symbol": "db.execute"
+            },
+            "sanitizer_status": "present",
+            "sanitizers": [
+              {
+                "path": "python/secure_app.py",
+                "line": 123,
+                "expression": "db.execute(query, (user_id,))",
+                "type": "sql-parameter-binding"
+              }
+            ],
+            "rule_ids": [
+              "PY.SQL.PARAM"
+            ],
+            "confidence": 0.45,
+            "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+          }
+        }
+      }
+    ],
+    "message": "1 dataflow observations",
+    "id": "TR-2b83bf183a82"
+  },
+  "duration_ms": 0,
+  "artifact_paths": [
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+    ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\broker\\dataflow-scanner-TCR-f879280a61b2.json"
+  ],
+  "raw": {},
+  "created_at": "2026-07-13T06:58:21+00:00",
+  "id": "TCR-f879280a61b2"
+}

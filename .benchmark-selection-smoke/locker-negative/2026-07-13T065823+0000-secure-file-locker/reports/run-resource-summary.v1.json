@@ -1,0 +1,76 @@
+{
+  "schema_version": "run-resource-summary.v1",
+  "run_id": "2026-07-13T065823+0000-secure-file-locker",
+  "target_identity": ".benchmark-selection/secure-file-locker",
+  "target_commit": "b2dd76f1b5d68200722f62c4935cc8ed0c80a59e",
+  "terminal_status": "succeeded",
+  "scanned_files": 1,
+  "scanned_bytes": 1248,
+  "stage_durations_ms": {
+    "analysis": 0,
+    "orchestrator": 0,
+    "recon": 0,
+    "validation": 0,
+    "verification": 0
+  },
+  "final_status_counts": {
+    "confirmed_count": 0,
+    "likely_count": 0,
+    "rejected_count": 0,
+    "manual_required_count": 0
+  },
+  "llm_requests": 0,
+  "llm_tokens": 0,
+  "tool_calls": 2,
+  "docker_starts": 0,
+  "docker_results": 0,
+  "repair_attempts": 0,
+  "timeouts": 0,
+  "budget_consumption": {
+    "llm_requests": 0,
+    "llm_tokens": 0,
+    "tool_calls": 2,
+    "docker_starts": 0,
+    "repair_attempts": 0
+  },
+  "accounting_gaps": [],
+  "contributing_refs": [
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\metadata\\repository.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\runtime_state\\state.json",
+    ".benchmark-selection-smoke\\locker-negative\\2026-07-13T065823+0000-secure-file-locker\\reports\\report.json"
+  ],
+  "provider": "disabled",
+  "model": null,
+  "prompt_schema_version": null,
+  "engine_commit": "92a53b5a34338bfc0a25b03f717a1ad05e067b90",
+  "language": "Python",
+  "scope": {
+    "include": [
+      "app.py"
+    ],
+    "exclude": [
+      "tests/**",
+      "test/**",
+      "fixtures/**",
+      "external/**",
+      "openspec/**",
+      ".codex/**"
+    ]
+  },
+  "safety": {
+    "target_writes": false,
+    "project_execution": false,
+    "network": false
+  },
+  "docker_policy": {
+    "enabled": false,
+    "runner": "local"
+  },
+  "environment": {
+    "python": "3.12.3",
+    "platform": "nt",
+    "benchmark_project_id": null
+  },
+  "elapsed_seconds": 0.19,
+  "generated_at": "2026-07-13T06:58:23+00:00"
+}

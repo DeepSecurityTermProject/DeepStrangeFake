@@ -1,0 +1,15 @@
+{
+  "from_agent": "verification",
+  "to_agent": "reporting",
+  "completed_work": "Verification decisions completed with validation-level selection.",
+  "key_findings": [],
+  "evidence_refs": [],
+  "attention_points": [],
+  "suggested_next_actions": [
+    "Persist evidence chains.",
+    "Generate structured reports."
+  ],
+  "intelligence_refs": [],
+  "trace_id": "AT-7b7ab6e03805",
+  "id": "HO-6a91e5d1a437"
+}

@@ -1,0 +1,1462 @@
+{
+  "target_metadata": {
+    "target": {
+      "source": ".benchmark-selection/sql-injection-lab",
+      "kind": "local",
+      "path": "D:\\DeepStrangeFake\\.benchmark-selection\\sql-injection-lab",
+      "url": null,
+      "owner": null,
+      "repo": null,
+      "ref": null,
+      "commit": "4624b0743464a1975acab215d1ffdbf1a8b622ba"
+    },
+    "root_path": "D:\\DeepStrangeFake\\.benchmark-selection\\sql-injection-lab",
+    "commit": "4624b0743464a1975acab215d1ffdbf1a8b622ba",
+    "dominant_language": "Python",
+    "languages": {
+      "Python": 5079
+    },
+    "file_tree": [
+      "python/secure_app.py"
+    ],
+    "file_categories": {
+      "python/secure_app.py": "product-code"
+    },
+    "dependencies": [],
+    "attack_surfaces": [
+      {
+        "kind": "route",
+        "path": "python/secure_app.py",
+        "start_line": 26,
+        "end_line": 26,
+        "symbol": null,
+        "detail": "@app.route('/')"
+      },
+      {
+        "kind": "database-access",
+        "path": "python/secure_app.py",
+        "start_line": 46,
+        "end_line": 46,
+        "symbol": null,
+        "detail": "query = \"SELECT * FROM users WHERE username = '\" + username + \"' AND password = '\" + password + \"'\""
+      },
+      {
+        "kind": "database-access",
+        "path": "python/secure_app.py",
+        "start_line": 50,
+        "end_line": 50,
+        "symbol": null,
+        "detail": "query = \"SELECT * FROM users WHERE username = ? AND password = ?\""
+      },
+      {
+        "kind": "route",
+        "path": "python/secure_app.py",
+        "start_line": 60,
+        "end_line": 60,
+        "symbol": null,
+        "detail": "@app.route('/login', methods=['GET', 'POST'])"
+      },
+      {
+        "kind": "database-access",
+        "path": "python/secure_app.py",
+        "start_line": 68,
+        "end_line": 68,
+        "symbol": null,
+        "detail": "query = \"SELECT * FROM users WHERE username = ? AND password = ?\""
+      },
+      {
+        "kind": "route",
+        "path": "python/secure_app.py",
+        "start_line": 89,
+        "end_line": 89,
+        "symbol": null,
+        "detail": "@app.route('/search')"
+      },
+      {
+        "kind": "database-access",
+        "path": "python/secure_app.py",
+        "start_line": 96,
+        "end_line": 96,
+        "symbol": null,
+        "detail": "query = \"SELECT id, name, price, description FROM products WHERE name LIKE ? OR description LIKE ?\""
+      },
+      {
+        "kind": "route",
+        "path": "python/secure_app.py",
+        "start_line": 117,
+        "end_line": 117,
+        "symbol": null,
+        "detail": "@app.route('/user')"
+      },
+      {
+        "kind": "database-access",
+        "path": "python/secure_app.py",
+        "start_line": 121,
+        "end_line": 121,
+        "symbol": null,
+        "detail": "query = \"SELECT id, username, email, role FROM users WHERE id = ?\""
+      },
+      {
+        "kind": "auth-logic",
+        "path": "python/secure_app.py",
+        "start_line": 121,
+        "end_line": 121,
+        "symbol": null,
+        "detail": "query = \"SELECT id, username, email, role FROM users WHERE id = ?\""
+      },
+      {
+        "kind": "auth-logic",
+        "path": "python/secure_app.py",
+        "start_line": 126,
+        "end_line": 126,
+        "symbol": null,
+        "detail": "result = f\"<p>Username: {row['username']} / Role: {row['role']}</p>\""
+      }
+    ],
+    "generated_at": "2026-07-13T06:58:21+00:00"
+  },
+  "executive_summary": {
+    "target": ".benchmark-selection/sql-injection-lab",
+    "finding_count": 0,
+    "verification_candidate_count": 1,
+    "validated_count": 0,
+    "confirmed_count": 0,
+    "likely_count": 0,
+    "rejected_count": 1,
+    "manual_required_count": 0,
+    "languages": {
+      "Python": 5079
+    },
+    "source_category_distribution": {}
+  },
+  "findings": [],
+  "evidence_chains": [
+    {
+      "finding_id": "F-3bb38db97d31",
+      "source_locations": [
+        {
+          "path": "python/secure_app.py",
+          "start_line": 123,
+          "end_line": 123,
+          "symbol": "db.execute",
+          "snippet": "request.args.get('id', '1') -> db.execute(query, (user_id,))"
+        },
+        {
+          "path": "python/secure_app.py",
+          "start_line": 119,
+          "end_line": 119,
+          "symbol": "request.args.get('id', '1')",
+          "snippet": "user_id = request.args.get('id', '1')"
+        }
+      ],
+      "vulnerability_class": "sql-injection",
+      "analysis_rationale": "Dataflow trace shows request.args.get('id', '1') reaching db.execute(query, (user_id,)).",
+      "verification": {
+        "finding": {
+          "vulnerability_class": "sql-injection",
+          "severity": "high",
+          "confidence": 0.45,
+          "location": {
+            "path": "python/secure_app.py",
+            "start_line": 123,
+            "end_line": 123,
+            "symbol": "db.execute",
+            "snippet": "request.args.get('id', '1') -> db.execute(query, (user_id,))"
+          },
+          "title": "Potential SQL injection",
+          "evidence": [
+            "request.args.get('id', '1') -> db.execute(query, (user_id,))"
+          ],
+          "remediation": "Use parameterized queries and avoid string interpolation for SQL.",
+          "description": "Dataflow trace shows request.args.get('id', '1') reaching db.execute(query, (user_id,)).",
+          "affected_function": null,
+          "call_path": [
+            "source:python/secure_app.py:119:request.args.get('id', '1')",
+            "assignment:python/secure_app.py:119:user_id = request.args.get('id', '1')",
+            "sanitizer:python/secure_app.py:123:db.execute(query, (user_id,))",
+            "sink:python/secure_app.py:123:db.execute(query, (user_id,))"
+          ],
+          "tool_refs": [
+            "TCR-f879280a61b2"
+          ],
+          "intelligence_refs": [],
+          "agent_trace_refs": [
+            "AT-87b90b52ecd4",
+            "AT-2721e382b998",
+            "AT-7dc61e420884"
+          ],
+          "handoff_refs": [
+            "HO-e396e7122765",
+            "HO-4551b84fba37",
+            "HO-ba59535967b1"
+          ],
+          "validation_level": "manual",
+          "validation_status": "rejected",
+          "verification_status": "rejected",
+          "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+          "verifier_decision": "reject",
+          "cve_ids": [],
+          "cwe_ids": [],
+          "cvss": null,
+          "epss": null,
+          "kev": null,
+          "public_poc_available": null,
+          "risk_score": null,
+          "metadata": {
+            "dataflow_trace_ids": [
+              "DFT-dbfc6d245c92"
+            ],
+            "dataflow_trace_refs": [
+              ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+            ],
+            "dataflow_summary": {
+              "trace_id": "DFT-dbfc6d245c92",
+              "status": "sanitized-flow",
+              "vulnerability_class": "sql-injection",
+              "language": "python",
+              "source": {
+                "path": "python/secure_app.py",
+                "line": 119,
+                "expression": "request.args.get('id', '1')",
+                "symbol": "request.args.get('id', '1')"
+              },
+              "sink": {
+                "path": "python/secure_app.py",
+                "line": 123,
+                "expression": "db.execute(query, (user_id,))",
+                "symbol": "db.execute"
+              },
+              "sanitizer_status": "present",
+              "sanitizers": [
+                {
+                  "path": "python/secure_app.py",
+                  "line": 123,
+                  "expression": "db.execute(query, (user_id,))",
+                  "type": "sql-parameter-binding"
+                }
+              ],
+              "rule_ids": [
+                "PY.SQL.PARAM"
+              ],
+              "confidence": 0.45,
+              "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+            },
+            "dataflow_status": "sanitized-flow",
+            "dataflow_rule_ids": [
+              "PY.SQL.PARAM"
+            ],
+            "dataflow_locations": [
+              {
+                "path": "python/secure_app.py",
+                "start_line": 119,
+                "end_line": 119,
+                "symbol": "request.args.get('id', '1')",
+                "snippet": "user_id = request.args.get('id', '1')"
+              },
+              {
+                "path": "python/secure_app.py",
+                "start_line": 119,
+                "end_line": 119,
+                "symbol": null,
+                "snippet": "user_id = request.args.get('id', '1')"
+              },
+              {
+                "path": "python/secure_app.py",
+                "start_line": 123,
+                "end_line": 123,
+                "symbol": "db.execute",
+                "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+              },
+              {
+                "path": "python/secure_app.py",
+                "start_line": 123,
+                "end_line": 123,
+                "symbol": "db.execute",
+                "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+              }
+            ],
+            "local_evidence_refs": [
+              "TCR-f879280a61b2",
+              ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+            ],
+            "decision_source": "deterministic",
+            "runtime_task_refs": [
+              "TSK-1983ff04d11d",
+              "TSK-2f6c9cb2ed7e",
+              "TSK-05ad1f8b94cd",
+              "TSK-e53464348640",
+              "TSK-32d22378a5bd",
+              "TSK-5703eed4cc35"
+            ],
+            "prompt_refs": [],
+            "llm_response_refs": [],
+            "message_refs": [],
+            "memory_refs": [],
+            "mcp_call_refs": [],
+            "tool_call_refs": [],
+            "decision_refs": [],
+            "verification_status": "rejected",
+            "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+            "validation_summary": {
+              "finding_id": "F-3bb38db97d31",
+              "level": "manual",
+              "status": "rejected",
+              "command": null,
+              "command_argv": [],
+              "verification_status": "rejected",
+              "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+              "judge_reason": "",
+              "exit_code": null,
+              "timed_out": false,
+              "stdout_preview": "",
+              "stderr_preview": "",
+              "poc_refs": [],
+              "sandbox_result_refs": [],
+              "attempt_refs": [],
+              "environment": {},
+              "artifacts": [
+                "TCR-f879280a61b2",
+                ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+                ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+                ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+                ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json"
+              ],
+              "repair_attempt_count": 0,
+              "classifications": [],
+              "repair_timeline": [],
+              "semantic_integrity_status": "",
+              "safety_status": "",
+              "provisional_status": "rejected",
+              "final_status": "rejected",
+              "integrity_summary": {
+                "unchanged": true,
+                "before_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+                "after_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+                "comparison_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+                "changed_count": 0,
+                "added_count": 0,
+                "removed_count": 0,
+                "changed_files": [],
+                "added_files": [],
+                "removed_files": []
+              },
+              "final_stop_reason": "",
+              "message": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+              "timestamp": "2026-07-13T06:58:21+00:00"
+            }
+          },
+          "id": "F-3bb38db97d31"
+        },
+        "decision": "reject",
+        "reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+        "confidence": 0.45,
+        "validation_level": "manual",
+        "priority": "low",
+        "intelligence_refs": [],
+        "decision_source": "deterministic",
+        "llm_confidence": null,
+        "policy_gate": {},
+        "prompt_refs": [],
+        "llm_response_refs": [],
+        "fallback_reason": "",
+        "finding_id": "F-3bb38db97d31",
+        "created_at": "2026-07-13T06:58:21+00:00"
+      },
+      "validation": {
+        "finding_id": "F-3bb38db97d31",
+        "level": "manual",
+        "status": "rejected",
+        "command": null,
+        "command_argv": [],
+        "verification_status": "rejected",
+        "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+        "judge_reason": "",
+        "exit_code": null,
+        "timed_out": false,
+        "stdout_preview": "",
+        "stderr_preview": "",
+        "poc_refs": [],
+        "sandbox_result_refs": [],
+        "attempt_refs": [],
+        "environment": {},
+        "artifacts": [
+          "TCR-f879280a61b2",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json"
+        ],
+        "repair_attempt_count": 0,
+        "classifications": [],
+        "repair_timeline": [],
+        "semantic_integrity_status": "",
+        "safety_status": "",
+        "provisional_status": "rejected",
+        "final_status": "rejected",
+        "integrity_summary": {
+          "unchanged": true,
+          "before_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+          "after_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+          "comparison_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+          "changed_count": 0,
+          "added_count": 0,
+          "removed_count": 0,
+          "changed_files": [],
+          "added_files": [],
+          "removed_files": []
+        },
+        "final_stop_reason": "",
+        "message": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+        "timestamp": "2026-07-13T06:58:21+00:00"
+      },
+      "intelligence_refs": [],
+      "artifact_refs": [
+        "TCR-f879280a61b2",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json"
+      ],
+      "tool_refs": [
+        {
+          "kind": "tool",
+          "path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\evidence\\tool-TCR-f879280a61b2.json",
+          "payload": {
+            "request_id": "TC-d830cc03f6f3",
+            "tool_name": "dataflow-scanner",
+            "success": true,
+            "status": "ok",
+            "message": "1 dataflow observations",
+            "observations": [
+              {
+                "tool_name": "dataflow-scanner",
+                "kind": "dataflow-sanitized-flow",
+                "message": "request.args.get('id', '1') reaches db.execute(query, (user_id,)) through sanitizer",
+                "path": "python/secure_app.py",
+                "line": 123,
+                "severity": "high",
+                "vulnerability_class": "sql-injection",
+                "evidence": "request.args.get('id', '1') -> db.execute(query, (user_id,))",
+                "success": true,
+                "degraded": false,
+                "raw": {
+                  "dataflow_trace_id": "DFT-dbfc6d245c92",
+                  "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+                  "dataflow_status": "sanitized-flow",
+                  "dataflow_summary": {
+                    "trace_id": "DFT-dbfc6d245c92",
+                    "status": "sanitized-flow",
+                    "vulnerability_class": "sql-injection",
+                    "language": "python",
+                    "source": {
+                      "path": "python/secure_app.py",
+                      "line": 119,
+                      "expression": "request.args.get('id', '1')",
+                      "symbol": "request.args.get('id', '1')"
+                    },
+                    "sink": {
+                      "path": "python/secure_app.py",
+                      "line": 123,
+                      "expression": "db.execute(query, (user_id,))",
+                      "symbol": "db.execute"
+                    },
+                    "sanitizer_status": "present",
+                    "sanitizers": [
+                      {
+                        "path": "python/secure_app.py",
+                        "line": 123,
+                        "expression": "db.execute(query, (user_id,))",
+                        "type": "sql-parameter-binding"
+                      }
+                    ],
+                    "rule_ids": [
+                      "PY.SQL.PARAM"
+                    ],
+                    "confidence": 0.45,
+                    "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+                  },
+                  "call_path": [
+                    "source:python/secure_app.py:119:request.args.get('id', '1')",
+                    "assignment:python/secure_app.py:119:user_id = request.args.get('id', '1')",
+                    "sanitizer:python/secure_app.py:123:db.execute(query, (user_id,))",
+                    "sink:python/secure_app.py:123:db.execute(query, (user_id,))"
+                  ],
+                  "dataflow_locations": [
+                    {
+                      "path": "python/secure_app.py",
+                      "start_line": 119,
+                      "end_line": 119,
+                      "symbol": "request.args.get('id', '1')",
+                      "snippet": "user_id = request.args.get('id', '1')"
+                    },
+                    {
+                      "path": "python/secure_app.py",
+                      "start_line": 119,
+                      "end_line": 119,
+                      "symbol": null,
+                      "snippet": "user_id = request.args.get('id', '1')"
+                    },
+                    {
+                      "path": "python/secure_app.py",
+                      "start_line": 123,
+                      "end_line": 123,
+                      "symbol": "db.execute",
+                      "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+                    },
+                    {
+                      "path": "python/secure_app.py",
+                      "start_line": 123,
+                      "end_line": 123,
+                      "symbol": "db.execute",
+                      "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+                    }
+                  ],
+                  "rule_ids": [
+                    "PY.SQL.PARAM"
+                  ],
+                  "sanitizer_status": "present",
+                  "trace_artifact": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+                  "trace_payload_stored_in_artifact": true,
+                  "trace_inline_preview": {
+                    "trace_id": "DFT-dbfc6d245c92",
+                    "status": "sanitized-flow",
+                    "vulnerability_class": "sql-injection",
+                    "language": "python",
+                    "source": {
+                      "path": "python/secure_app.py",
+                      "line": 119,
+                      "expression": "request.args.get('id', '1')",
+                      "symbol": "request.args.get('id', '1')"
+                    },
+                    "sink": {
+                      "path": "python/secure_app.py",
+                      "line": 123,
+                      "expression": "db.execute(query, (user_id,))",
+                      "symbol": "db.execute"
+                    },
+                    "sanitizer_status": "present",
+                    "sanitizers": [
+                      {
+                        "path": "python/secure_app.py",
+                        "line": 123,
+                        "expression": "db.execute(query, (user_id,))",
+                        "type": "sql-parameter-binding"
+                      }
+                    ],
+                    "rule_ids": [
+                      "PY.SQL.PARAM"
+                    ],
+                    "confidence": 0.45,
+                    "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+                  }
+                }
+              }
+            ],
+            "output": {
+              "tool_name": "dataflow-scanner",
+              "inputs": {
+                "target": ".benchmark-selection/sql-injection-lab",
+                "file_count": 1,
+                "scanned_files": 1,
+                "max_files": 500,
+                "max_traces": 200
+              },
+              "success": true,
+              "exit_status": 0,
+              "duration_ms": 0,
+              "artifact_paths": [
+                ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+              ],
+              "observations": [
+                {
+                  "tool_name": "dataflow-scanner",
+                  "kind": "dataflow-sanitized-flow",
+                  "message": "request.args.get('id', '1') reaches db.execute(query, (user_id,)) through sanitizer",
+                  "path": "python/secure_app.py",
+                  "line": 123,
+                  "severity": "high",
+                  "vulnerability_class": "sql-injection",
+                  "evidence": "request.args.get('id', '1') -> db.execute(query, (user_id,))",
+                  "success": true,
+                  "degraded": false,
+                  "raw": {
+                    "dataflow_trace_id": "DFT-dbfc6d245c92",
+                    "dataflow_trace_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+                    "dataflow_status": "sanitized-flow",
+                    "dataflow_summary": {
+                      "trace_id": "DFT-dbfc6d245c92",
+                      "status": "sanitized-flow",
+                      "vulnerability_class": "sql-injection",
+                      "language": "python",
+                      "source": {
+                        "path": "python/secure_app.py",
+                        "line": 119,
+                        "expression": "request.args.get('id', '1')",
+                        "symbol": "request.args.get('id', '1')"
+                      },
+                      "sink": {
+                        "path": "python/secure_app.py",
+                        "line": 123,
+                        "expression": "db.execute(query, (user_id,))",
+                        "symbol": "db.execute"
+                      },
+                      "sanitizer_status": "present",
+                      "sanitizers": [
+                        {
+                          "path": "python/secure_app.py",
+                          "line": 123,
+                          "expression": "db.execute(query, (user_id,))",
+                          "type": "sql-parameter-binding"
+                        }
+                      ],
+                      "rule_ids": [
+                        "PY.SQL.PARAM"
+                      ],
+                      "confidence": 0.45,
+                      "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+                    },
+                    "call_path": [
+                      "source:python/secure_app.py:119:request.args.get('id', '1')",
+                      "assignment:python/secure_app.py:119:user_id = request.args.get('id', '1')",
+                      "sanitizer:python/secure_app.py:123:db.execute(query, (user_id,))",
+                      "sink:python/secure_app.py:123:db.execute(query, (user_id,))"
+                    ],
+                    "dataflow_locations": [
+                      {
+                        "path": "python/secure_app.py",
+                        "start_line": 119,
+                        "end_line": 119,
+                        "symbol": "request.args.get('id', '1')",
+                        "snippet": "user_id = request.args.get('id', '1')"
+                      },
+                      {
+                        "path": "python/secure_app.py",
+                        "start_line": 119,
+                        "end_line": 119,
+                        "symbol": null,
+                        "snippet": "user_id = request.args.get('id', '1')"
+                      },
+                      {
+                        "path": "python/secure_app.py",
+                        "start_line": 123,
+                        "end_line": 123,
+                        "symbol": "db.execute",
+                        "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+                      },
+                      {
+                        "path": "python/secure_app.py",
+                        "start_line": 123,
+                        "end_line": 123,
+                        "symbol": "db.execute",
+                        "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+                      }
+                    ],
+                    "rule_ids": [
+                      "PY.SQL.PARAM"
+                    ],
+                    "sanitizer_status": "present",
+                    "trace_artifact": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+                    "trace_payload_stored_in_artifact": true,
+                    "trace_inline_preview": {
+                      "trace_id": "DFT-dbfc6d245c92",
+                      "status": "sanitized-flow",
+                      "vulnerability_class": "sql-injection",
+                      "language": "python",
+                      "source": {
+                        "path": "python/secure_app.py",
+                        "line": 119,
+                        "expression": "request.args.get('id', '1')",
+                        "symbol": "request.args.get('id', '1')"
+                      },
+                      "sink": {
+                        "path": "python/secure_app.py",
+                        "line": 123,
+                        "expression": "db.execute(query, (user_id,))",
+                        "symbol": "db.execute"
+                      },
+                      "sanitizer_status": "present",
+                      "sanitizers": [
+                        {
+                          "path": "python/secure_app.py",
+                          "line": 123,
+                          "expression": "db.execute(query, (user_id,))",
+                          "type": "sql-parameter-binding"
+                        }
+                      ],
+                      "rule_ids": [
+                        "PY.SQL.PARAM"
+                      ],
+                      "confidence": 0.45,
+                      "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+                    }
+                  }
+                }
+              ],
+              "message": "1 dataflow observations",
+              "id": "TR-2b83bf183a82"
+            },
+            "duration_ms": 0,
+            "artifact_paths": [
+              ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+              ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\broker\\dataflow-scanner-TCR-f879280a61b2.json"
+            ],
+            "raw": {},
+            "created_at": "2026-07-13T06:58:21+00:00",
+            "id": "TCR-f879280a61b2"
+          }
+        },
+        {
+          "kind": "tool",
+          "path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\evidence\\tool-TCR-82826db7157a.json",
+          "payload": {
+            "request_id": "TC-d374acc562d7",
+            "tool_name": "pattern-scanner",
+            "success": true,
+            "status": "ok",
+            "message": "0 observations",
+            "observations": [],
+            "output": {
+              "tool_name": "pattern-scanner",
+              "inputs": {
+                "target": ".benchmark-selection/sql-injection-lab",
+                "file_count": 1
+              },
+              "success": true,
+              "exit_status": 0,
+              "duration_ms": 0,
+              "artifact_paths": [],
+              "observations": [],
+              "message": "0 observations",
+              "id": "TR-0a384ee6f35d"
+            },
+            "duration_ms": 0,
+            "artifact_paths": [
+              ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\tool_outputs\\broker\\pattern-scanner-TCR-82826db7157a.json"
+            ],
+            "raw": {},
+            "created_at": "2026-07-13T06:58:21+00:00",
+            "id": "TCR-82826db7157a"
+          }
+        }
+      ],
+      "dataflow_trace_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+      ],
+      "agent_traces": [
+        {
+          "agent_name": "recon",
+          "reasoning_summary": "Mapped project structure, dependencies, attack surfaces, and contextual CVE intelligence.",
+          "prompt": "",
+          "selected_context_refs": [
+            "python/secure_app.py"
+          ],
+          "model_metadata": {
+            "provider": "mock",
+            "model": "deterministic-local"
+          },
+          "raw_response": "",
+          "react_steps": [
+            {
+              "action": "inspect_metadata",
+              "observed_files": 1
+            },
+            {
+              "action": "inspect_attack_surface",
+              "observed_surfaces": 11
+            }
+          ],
+          "tool_calls": [
+            {
+              "tool": "cve-mcp-server",
+              "mode": "contextual",
+              "count": 0
+            }
+          ],
+          "created_at": "2026-07-13T06:58:21+00:00",
+          "id": "AT-87b90b52ecd4"
+        },
+        {
+          "agent_name": "analysis",
+          "reasoning_summary": "Converted deterministic tool observations and contextual CVE/CWE intelligence into candidate findings.",
+          "prompt": "",
+          "selected_context_refs": [
+            "python/secure_app.py"
+          ],
+          "model_metadata": {
+            "provider": "mock",
+            "model": "deterministic-local"
+          },
+          "raw_response": "deterministic-analysis",
+          "react_steps": [
+            {
+              "action": "consume_recon_handoff",
+              "handoff": "HO-e396e7122765"
+            },
+            {
+              "action": "review_tool_results",
+              "tool_result_count": 2
+            },
+            {
+              "action": "emit_candidates",
+              "candidate_count": 1
+            }
+          ],
+          "tool_calls": [
+            {
+              "tool": "dataflow-scanner",
+              "result_id": "TCR-f879280a61b2",
+              "observations": 1
+            },
+            {
+              "tool": "pattern-scanner",
+              "result_id": "TCR-82826db7157a",
+              "observations": 0
+            }
+          ],
+          "created_at": "2026-07-13T06:58:21+00:00",
+          "id": "AT-2721e382b998"
+        },
+        {
+          "agent_name": "verification",
+          "reasoning_summary": "Independently reviewed candidates, rejected weak evidence, and selected validation levels.",
+          "prompt": "",
+          "selected_context_refs": [
+            "python/secure_app.py"
+          ],
+          "model_metadata": {
+            "provider": "mock",
+            "model": "deterministic-local"
+          },
+          "raw_response": "deterministic-verification",
+          "react_steps": [
+            {
+              "action": "review_candidates",
+              "candidate_count": 1
+            },
+            {
+              "action": "emit_decisions",
+              "accepted": 0,
+              "rejected": 1
+            }
+          ],
+          "tool_calls": [
+            {
+              "tool": "cve-mcp-server",
+              "mode": "prioritization",
+              "count": 0
+            }
+          ],
+          "created_at": "2026-07-13T06:58:21+00:00",
+          "id": "AT-7dc61e420884"
+        }
+      ],
+      "handoffs": [
+        {
+          "from_agent": "recon",
+          "to_agent": "analysis",
+          "completed_work": "Repository and attack-surface reconnaissance completed.",
+          "key_findings": [
+            "route:python/secure_app.py:26",
+            "database-access:python/secure_app.py:46",
+            "database-access:python/secure_app.py:50",
+            "route:python/secure_app.py:60",
+            "database-access:python/secure_app.py:68",
+            "route:python/secure_app.py:89",
+            "database-access:python/secure_app.py:96",
+            "route:python/secure_app.py:117",
+            "database-access:python/secure_app.py:121",
+            "auth-logic:python/secure_app.py:121",
+            "auth-logic:python/secure_app.py:126"
+          ],
+          "evidence_refs": [],
+          "attention_points": [],
+          "suggested_next_actions": [
+            "Prioritize source sinks with local evidence.",
+            "Treat CVE intelligence as context."
+          ],
+          "intelligence_refs": [],
+          "trace_id": "AT-87b90b52ecd4",
+          "id": "HO-e396e7122765"
+        },
+        {
+          "from_agent": "analysis",
+          "to_agent": "verification",
+          "completed_work": "Candidate findings generated from local tool evidence and contextual intelligence.",
+          "key_findings": [
+            "F-3bb38db97d31"
+          ],
+          "evidence_refs": [
+            "TCR-f879280a61b2"
+          ],
+          "attention_points": [
+            "Reject intelligence-only matches without local evidence."
+          ],
+          "suggested_next_actions": [
+            "Independently verify local evidence.",
+            "Select safe validation level."
+          ],
+          "intelligence_refs": [],
+          "trace_id": "AT-2721e382b998",
+          "id": "HO-4551b84fba37"
+        },
+        {
+          "from_agent": "verification",
+          "to_agent": "reporting",
+          "completed_work": "Verification decisions completed with validation-level selection.",
+          "key_findings": [
+            "reject:F-3bb38db97d31"
+          ],
+          "evidence_refs": [
+            "TCR-f879280a61b2"
+          ],
+          "attention_points": [
+            "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace."
+          ],
+          "suggested_next_actions": [
+            "Persist evidence chains.",
+            "Generate structured reports."
+          ],
+          "intelligence_refs": [],
+          "trace_id": "AT-7dc61e420884",
+          "id": "HO-ba59535967b1"
+        }
+      ],
+      "call_path": [
+        "source:python/secure_app.py:119:request.args.get('id', '1')",
+        "assignment:python/secure_app.py:119:user_id = request.args.get('id', '1')",
+        "sanitizer:python/secure_app.py:123:db.execute(query, (user_id,))",
+        "sink:python/secure_app.py:123:db.execute(query, (user_id,))"
+      ],
+      "created_at": "2026-07-13T06:58:21+00:00",
+      "id": "EC-f95579a7e692"
+    }
+  ],
+  "verification_candidates": [
+    {
+      "vulnerability_class": "sql-injection",
+      "severity": "high",
+      "confidence": 0.45,
+      "location": {
+        "path": "python/secure_app.py",
+        "start_line": 123,
+        "end_line": 123,
+        "symbol": "db.execute",
+        "snippet": "request.args.get('id', '1') -> db.execute(query, (user_id,))"
+      },
+      "title": "Potential SQL injection",
+      "evidence": [
+        "request.args.get('id', '1') -> db.execute(query, (user_id,))"
+      ],
+      "remediation": "Use parameterized queries and avoid string interpolation for SQL.",
+      "description": "Dataflow trace shows request.args.get('id', '1') reaching db.execute(query, (user_id,)).",
+      "affected_function": null,
+      "call_path": [
+        "source:python/secure_app.py:119:request.args.get('id', '1')",
+        "assignment:python/secure_app.py:119:user_id = request.args.get('id', '1')",
+        "sanitizer:python/secure_app.py:123:db.execute(query, (user_id,))",
+        "sink:python/secure_app.py:123:db.execute(query, (user_id,))"
+      ],
+      "tool_refs": [
+        "TCR-f879280a61b2"
+      ],
+      "intelligence_refs": [],
+      "agent_trace_refs": [
+        "AT-87b90b52ecd4",
+        "AT-2721e382b998",
+        "AT-7dc61e420884"
+      ],
+      "handoff_refs": [
+        "HO-e396e7122765",
+        "HO-4551b84fba37",
+        "HO-ba59535967b1"
+      ],
+      "validation_level": "manual",
+      "validation_status": "rejected",
+      "verification_status": "rejected",
+      "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+      "verifier_decision": "reject",
+      "cve_ids": [],
+      "cwe_ids": [],
+      "cvss": null,
+      "epss": null,
+      "kev": null,
+      "public_poc_available": null,
+      "risk_score": null,
+      "metadata": {
+        "dataflow_trace_ids": [
+          "DFT-dbfc6d245c92"
+        ],
+        "dataflow_trace_refs": [
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+        ],
+        "dataflow_summary": {
+          "trace_id": "DFT-dbfc6d245c92",
+          "status": "sanitized-flow",
+          "vulnerability_class": "sql-injection",
+          "language": "python",
+          "source": {
+            "path": "python/secure_app.py",
+            "line": 119,
+            "expression": "request.args.get('id', '1')",
+            "symbol": "request.args.get('id', '1')"
+          },
+          "sink": {
+            "path": "python/secure_app.py",
+            "line": 123,
+            "expression": "db.execute(query, (user_id,))",
+            "symbol": "db.execute"
+          },
+          "sanitizer_status": "present",
+          "sanitizers": [
+            {
+              "path": "python/secure_app.py",
+              "line": 123,
+              "expression": "db.execute(query, (user_id,))",
+              "type": "sql-parameter-binding"
+            }
+          ],
+          "rule_ids": [
+            "PY.SQL.PARAM"
+          ],
+          "confidence": 0.45,
+          "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+        },
+        "dataflow_status": "sanitized-flow",
+        "dataflow_rule_ids": [
+          "PY.SQL.PARAM"
+        ],
+        "dataflow_locations": [
+          {
+            "path": "python/secure_app.py",
+            "start_line": 119,
+            "end_line": 119,
+            "symbol": "request.args.get('id', '1')",
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/secure_app.py",
+            "start_line": 119,
+            "end_line": 119,
+            "symbol": null,
+            "snippet": "user_id = request.args.get('id', '1')"
+          },
+          {
+            "path": "python/secure_app.py",
+            "start_line": 123,
+            "end_line": 123,
+            "symbol": "db.execute",
+            "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+          },
+          {
+            "path": "python/secure_app.py",
+            "start_line": 123,
+            "end_line": 123,
+            "symbol": "db.execute",
+            "snippet": "row = db.execute(query, (user_id,)).fetchone()"
+          }
+        ],
+        "local_evidence_refs": [
+          "TCR-f879280a61b2",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+        ],
+        "decision_source": "deterministic",
+        "runtime_task_refs": [
+          "TSK-1983ff04d11d",
+          "TSK-2f6c9cb2ed7e",
+          "TSK-05ad1f8b94cd",
+          "TSK-e53464348640",
+          "TSK-32d22378a5bd",
+          "TSK-5703eed4cc35"
+        ],
+        "prompt_refs": [],
+        "llm_response_refs": [],
+        "message_refs": [],
+        "memory_refs": [],
+        "mcp_call_refs": [],
+        "tool_call_refs": [],
+        "decision_refs": [],
+        "verification_status": "rejected",
+        "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+        "validation_summary": {
+          "finding_id": "F-3bb38db97d31",
+          "level": "manual",
+          "status": "rejected",
+          "command": null,
+          "command_argv": [],
+          "verification_status": "rejected",
+          "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+          "judge_reason": "",
+          "exit_code": null,
+          "timed_out": false,
+          "stdout_preview": "",
+          "stderr_preview": "",
+          "poc_refs": [],
+          "sandbox_result_refs": [],
+          "attempt_refs": [],
+          "environment": {},
+          "artifacts": [
+            "TCR-f879280a61b2",
+            ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+            ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+            ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+            ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json"
+          ],
+          "repair_attempt_count": 0,
+          "classifications": [],
+          "repair_timeline": [],
+          "semantic_integrity_status": "",
+          "safety_status": "",
+          "provisional_status": "rejected",
+          "final_status": "rejected",
+          "integrity_summary": {
+            "unchanged": true,
+            "before_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+            "after_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+            "comparison_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+            "changed_count": 0,
+            "added_count": 0,
+            "removed_count": 0,
+            "changed_files": [],
+            "added_files": [],
+            "removed_files": []
+          },
+          "final_stop_reason": "",
+          "message": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+          "timestamp": "2026-07-13T06:58:21+00:00"
+        }
+      },
+      "id": "F-3bb38db97d31",
+      "source_category": "product-code",
+      "evidence_chain_id": "EC-f95579a7e692",
+      "agent_traces": [
+        {
+          "agent_name": "recon",
+          "reasoning_summary": "Mapped project structure, dependencies, attack surfaces, and contextual CVE intelligence.",
+          "prompt": "",
+          "selected_context_refs": [
+            "python/secure_app.py"
+          ],
+          "model_metadata": {
+            "provider": "mock",
+            "model": "deterministic-local"
+          },
+          "raw_response": "",
+          "react_steps": [
+            {
+              "action": "inspect_metadata",
+              "observed_files": 1
+            },
+            {
+              "action": "inspect_attack_surface",
+              "observed_surfaces": 11
+            }
+          ],
+          "tool_calls": [
+            {
+              "tool": "cve-mcp-server",
+              "mode": "contextual",
+              "count": 0
+            }
+          ],
+          "created_at": "2026-07-13T06:58:21+00:00",
+          "id": "AT-87b90b52ecd4"
+        },
+        {
+          "agent_name": "analysis",
+          "reasoning_summary": "Converted deterministic tool observations and contextual CVE/CWE intelligence into candidate findings.",
+          "prompt": "",
+          "selected_context_refs": [
+            "python/secure_app.py"
+          ],
+          "model_metadata": {
+            "provider": "mock",
+            "model": "deterministic-local"
+          },
+          "raw_response": "deterministic-analysis",
+          "react_steps": [
+            {
+              "action": "consume_recon_handoff",
+              "handoff": "HO-e396e7122765"
+            },
+            {
+              "action": "review_tool_results",
+              "tool_result_count": 2
+            },
+            {
+              "action": "emit_candidates",
+              "candidate_count": 1
+            }
+          ],
+          "tool_calls": [
+            {
+              "tool": "dataflow-scanner",
+              "result_id": "TCR-f879280a61b2",
+              "observations": 1
+            },
+            {
+              "tool": "pattern-scanner",
+              "result_id": "TCR-82826db7157a",
+              "observations": 0
+            }
+          ],
+          "created_at": "2026-07-13T06:58:21+00:00",
+          "id": "AT-2721e382b998"
+        },
+        {
+          "agent_name": "verification",
+          "reasoning_summary": "Independently reviewed candidates, rejected weak evidence, and selected validation levels.",
+          "prompt": "",
+          "selected_context_refs": [
+            "python/secure_app.py"
+          ],
+          "model_metadata": {
+            "provider": "mock",
+            "model": "deterministic-local"
+          },
+          "raw_response": "deterministic-verification",
+          "react_steps": [
+            {
+              "action": "review_candidates",
+              "candidate_count": 1
+            },
+            {
+              "action": "emit_decisions",
+              "accepted": 0,
+              "rejected": 1
+            }
+          ],
+          "tool_calls": [
+            {
+              "tool": "cve-mcp-server",
+              "mode": "prioritization",
+              "count": 0
+            }
+          ],
+          "created_at": "2026-07-13T06:58:21+00:00",
+          "id": "AT-7dc61e420884"
+        }
+      ],
+      "handoffs": [
+        {
+          "from_agent": "recon",
+          "to_agent": "analysis",
+          "completed_work": "Repository and attack-surface reconnaissance completed.",
+          "key_findings": [
+            "route:python/secure_app.py:26",
+            "database-access:python/secure_app.py:46",
+            "database-access:python/secure_app.py:50",
+            "route:python/secure_app.py:60",
+            "database-access:python/secure_app.py:68",
+            "route:python/secure_app.py:89",
+            "database-access:python/secure_app.py:96",
+            "route:python/secure_app.py:117",
+            "database-access:python/secure_app.py:121",
+            "auth-logic:python/secure_app.py:121",
+            "auth-logic:python/secure_app.py:126"
+          ],
+          "evidence_refs": [],
+          "attention_points": [],
+          "suggested_next_actions": [
+            "Prioritize source sinks with local evidence.",
+            "Treat CVE intelligence as context."
+          ],
+          "intelligence_refs": [],
+          "trace_id": "AT-87b90b52ecd4",
+          "id": "HO-e396e7122765"
+        },
+        {
+          "from_agent": "analysis",
+          "to_agent": "verification",
+          "completed_work": "Candidate findings generated from local tool evidence and contextual intelligence.",
+          "key_findings": [
+            "F-3bb38db97d31"
+          ],
+          "evidence_refs": [
+            "TCR-f879280a61b2"
+          ],
+          "attention_points": [
+            "Reject intelligence-only matches without local evidence."
+          ],
+          "suggested_next_actions": [
+            "Independently verify local evidence.",
+            "Select safe validation level."
+          ],
+          "intelligence_refs": [],
+          "trace_id": "AT-2721e382b998",
+          "id": "HO-4551b84fba37"
+        },
+        {
+          "from_agent": "verification",
+          "to_agent": "reporting",
+          "completed_work": "Verification decisions completed with validation-level selection.",
+          "key_findings": [
+            "reject:F-3bb38db97d31"
+          ],
+          "evidence_refs": [
+            "TCR-f879280a61b2"
+          ],
+          "attention_points": [
+            "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace."
+          ],
+          "suggested_next_actions": [
+            "Persist evidence chains.",
+            "Generate structured reports."
+          ],
+          "intelligence_refs": [],
+          "trace_id": "AT-7dc61e420884",
+          "id": "HO-ba59535967b1"
+        }
+      ],
+      "validation": {
+        "finding_id": "F-3bb38db97d31",
+        "level": "manual",
+        "status": "rejected",
+        "command": null,
+        "command_argv": [],
+        "verification_status": "rejected",
+        "verification_reason": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+        "judge_reason": "",
+        "exit_code": null,
+        "timed_out": false,
+        "stdout_preview": "",
+        "stderr_preview": "",
+        "poc_refs": [],
+        "sandbox_result_refs": [],
+        "attempt_refs": [],
+        "environment": {},
+        "artifacts": [
+          "TCR-f879280a61b2",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+          ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json"
+        ],
+        "repair_attempt_count": 0,
+        "classifications": [],
+        "repair_timeline": [],
+        "semantic_integrity_status": "",
+        "safety_status": "",
+        "provisional_status": "rejected",
+        "final_status": "rejected",
+        "integrity_summary": {
+          "unchanged": true,
+          "before_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+          "after_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+          "comparison_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+          "changed_count": 0,
+          "added_count": 0,
+          "removed_count": 0,
+          "changed_files": [],
+          "added_files": [],
+          "removed_files": []
+        },
+        "final_stop_reason": "",
+        "message": "Rejected: recognized sanitizer or blocking guard is present in the dataflow trace.",
+        "timestamp": "2026-07-13T06:58:21+00:00"
+      },
+      "repair_summary": {
+        "attempt_count": 0,
+        "classifications": [],
+        "timeline": [],
+        "semantic_integrity_status": "",
+        "safety_status": "",
+        "provisional_status": "rejected",
+        "final_status": "rejected",
+        "integrity": {
+          "unchanged": true,
+          "before_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-before.json",
+          "after_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-manifest-after.json",
+          "comparison_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\verification\\target-integrity-comparison.json",
+          "changed_count": 0,
+          "added_count": 0,
+          "removed_count": 0,
+          "changed_files": [],
+          "added_files": [],
+          "removed_files": []
+        },
+        "final_stop_reason": ""
+      },
+      "vulnerability_intelligence": [],
+      "prompt_refs": [],
+      "llm_response_refs": [],
+      "message_refs": [],
+      "memory_refs": [],
+      "mcp_call_refs": [],
+      "tool_call_refs": [],
+      "decision_refs": [],
+      "runtime_task_refs": [
+        "TSK-1983ff04d11d",
+        "TSK-2f6c9cb2ed7e",
+        "TSK-05ad1f8b94cd",
+        "TSK-e53464348640",
+        "TSK-32d22378a5bd",
+        "TSK-5703eed4cc35"
+      ],
+      "dataflow_trace_refs": [
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+      ],
+      "dataflow_summary": {
+        "trace_id": "DFT-dbfc6d245c92",
+        "status": "sanitized-flow",
+        "vulnerability_class": "sql-injection",
+        "language": "python",
+        "source": {
+          "path": "python/secure_app.py",
+          "line": 119,
+          "expression": "request.args.get('id', '1')",
+          "symbol": "request.args.get('id', '1')"
+        },
+        "sink": {
+          "path": "python/secure_app.py",
+          "line": 123,
+          "expression": "db.execute(query, (user_id,))",
+          "symbol": "db.execute"
+        },
+        "sanitizer_status": "present",
+        "sanitizers": [
+          {
+            "path": "python/secure_app.py",
+            "line": 123,
+            "expression": "db.execute(query, (user_id,))",
+            "type": "sql-parameter-binding"
+          }
+        ],
+        "rule_ids": [
+          "PY.SQL.PARAM"
+        ],
+        "confidence": 0.45,
+        "artifact_path": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+      },
+      "dataflow_status": "sanitized-flow",
+      "dataflow_rule_ids": [
+        "PY.SQL.PARAM"
+      ],
+      "decision_source": "deterministic",
+      "llm_confidence": null,
+      "policy_gate": {},
+      "fallback_reason": "",
+      "local_evidence_refs": [
+        "TCR-f879280a61b2",
+        ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\dataflow\\traces\\DFT-dbfc6d245c92.json"
+      ],
+      "contextual_intelligence_refs": []
+    }
+  ],
+  "runtime": {
+    "kernel": {
+      "name": "AgentRuntime",
+      "state_ref": ".benchmark-selection-smoke\\jim-secure\\2026-07-13T065821+0000-sql-injection-lab\\runtime_state\\state.json",
+      "task_count": 7,
+      "roles": [
+        "analysis",
+        "orchestrator",
+        "recon",
+        "reporting",
+        "validation",
+        "verification"
+      ]
+    }
+  },
+  "run_status": "completed",
+  "generated_at": "2026-07-13T06:58:21+00:00"
+}
