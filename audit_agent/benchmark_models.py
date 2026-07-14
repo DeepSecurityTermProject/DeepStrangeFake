@@ -320,6 +320,17 @@ class RunResourceSummary(StrictModel):
     budget_consumption: dict[str, int | float | None]
     accounting_gaps: list[dict[str, str]]
     contributing_refs: list[str]
+    ledger_present: bool = False
+    accounting_source: str = "legacy-artifact-scan"
+    llm_total_request_groups: int | None = None
+    llm_dispatched_request_groups: int | None = None
+    llm_provider_attempts: int | None = None
+    llm_retries: int | None = None
+    llm_pre_dispatch_denials: int | None = None
+    llm_terminal_status_counts: dict[str, int] = field(default_factory=dict)
+    llm_reconciliation_status: str = "legacy-unavailable"
+    llm_gap_ids: list[str] = field(default_factory=list)
+    llm_contributing_refs: list[str] = field(default_factory=list)
     provider: str | None = None
     model: str | None = None
     prompt_schema_version: str | None = None
@@ -344,6 +355,22 @@ class RunResourceSummary(StrictModel):
                 raise ValueError(f"resource field {name} is null without accounting gap")
         if self.elapsed_seconds is not None and self.elapsed_seconds < 0:
             raise ValueError("resource elapsed_seconds must be non-negative")
+        if self.accounting_source not in {
+            "lifecycle-ledger",
+            "compatibility-observer",
+            "legacy-artifact-scan",
+            "disabled-zero",
+            "unknown",
+        }:
+            raise ValueError(f"unsupported LLM accounting source: {self.accounting_source}")
+        if self.llm_reconciliation_status not in {
+            "complete",
+            "incomplete",
+            "legacy-unavailable",
+        }:
+            raise ValueError(
+                f"unsupported LLM reconciliation status: {self.llm_reconciliation_status}"
+            )
 
 
 @dataclass

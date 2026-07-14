@@ -7,6 +7,7 @@ from typing import Any
 
 from .config import PromptRuntimeConfig
 from .models import PromptRenderRecord
+from .redaction import redact_secrets
 from .storage import immutable_path
 
 
@@ -163,11 +164,18 @@ def render_default_prompt(
     return record
 
 
-def persist_prompt(root: Path | str, record: PromptRenderRecord) -> Path:
+def persist_prompt(
+    root: Path | str,
+    record: PromptRenderRecord,
+    secret_values: list[str] | tuple[str, ...] | None = None,
+) -> Path:
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     path = immutable_path(root / f"{record.role}-{record.template_id.replace('.', '-')}-{record.id}.json")
-    path.write_text(json.dumps(record.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(redact_secrets(record.to_dict(), secret_values), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     record.artifact_path = str(path)
     return path
 

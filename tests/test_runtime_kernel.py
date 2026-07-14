@@ -776,6 +776,32 @@ class AgentRuntimeCompatibilityTests(unittest.TestCase):
             self.assertTrue(set(contract["artifact_categories"]) <= {item.name for item in run_dir.iterdir()})
             self.assertTrue(set(contract["report_fields"]) <= set(report))
 
+    def test_legacy_runtime_report_declares_lifecycle_ledger_token_usage(self):
+        from audit_agent.pipeline import run_audit
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = create_vulnerable_fixture(Path(tmp))
+            config = AuditConfig.default()
+            config.runtime_enabled = True
+            config.graph.mode = "legacy"
+            config.llm.provider = "mock"
+            config.cve_mcp.enabled = False
+            config.mcp.enabled = False
+
+            result = run_audit(str(project), config=config, output_dir=Path(tmp) / "runs")
+            report = json.loads(
+                (Path(result["run_dir"]) / "reports" / "report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            self.assertEqual(report["runtime"]["token_usage"]["mode"], "lifecycle-ledger")
+            self.assertTrue(report["runtime"]["llm_accounting"]["ledger_present"])
+            self.assertEqual(
+                report["runtime"]["llm_accounting"]["accounting_source"],
+                "compatibility-observer",
+            )
+
     def test_run_audit_delegates_to_runtime_kernel_and_preserves_outputs(self):
         from audit_agent.pipeline import run_audit
 

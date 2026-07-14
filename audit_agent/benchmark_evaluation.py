@@ -418,11 +418,26 @@ def render_markdown(report: dict[str, Any]) -> str:
     for metric in report["metrics"]:
         value = "N/A" if metric["value"] is None else f"{metric['value']:.4f}"
         lines.append(f"| {metric['metric_id']} | {value} | {metric['numerator']} | {metric['denominator']} | {metric.get('reason') or ''} |")
-    lines.extend(["", "## Resources", "", "| Case | Seconds | LLM tokens | Docker starts | Accounting gaps |", "| --- | ---: | ---: | ---: | --- |"])
+    lines.extend(
+        [
+            "",
+            "## Resources",
+            "",
+            "| Case | Seconds | LLM tokens | Docker starts | LLM accounting source | Reconciliation | Blocking IDs | Accounting gaps |",
+            "| --- | ---: | ---: | ---: | --- | --- | --- | --- |",
+        ]
+    )
     for case in report["cases"]:
         resources = case.get("resources") or {}
         gaps = ", ".join(item.get("field", "") for item in resources.get("accounting_gaps", []))
-        lines.append(f"| {case['case_id']} | {resources.get('elapsed_seconds', 'N/A')} | {resources.get('llm_tokens', 'N/A')} | {resources.get('docker_starts', 'N/A')} | {gaps} |")
+        blockers = ", ".join(resources.get("llm_gap_ids") or [])
+        llm_tokens = resources.get("llm_tokens")
+        lines.append(
+            f"| {case['case_id']} | {resources.get('elapsed_seconds', 'N/A')} | "
+            f"{'N/A' if llm_tokens is None else llm_tokens} | {resources.get('docker_starts', 'N/A')} | "
+            f"{resources.get('accounting_source', 'unknown')} | "
+            f"{resources.get('llm_reconciliation_status', 'unknown')} | {blockers} | {gaps} |"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -522,6 +537,12 @@ def evaluate_comparison_gates(
             failures.append({"gate": "cleanup-failed", "case_id": case_id})
         if (case.get("resources") or {}).get("accounting_gaps"):
             failures.append({"gate": "accounting-gap", "case_id": case_id})
+        resources = case.get("resources") or {}
+        if resources.get("llm_reconciliation_status") == "incomplete":
+            for gap_id in resources.get("llm_gap_ids") or ["unknown-gap"]:
+                failures.append(
+                    {"gate": "llm-accounting-gap", "case_id": case_id, "gap_id": gap_id}
+                )
     for metric_id, delta in comparison.get("metric_deltas", {}).items():
         minimum = thresholds.get(f"min:{metric_id}")
         maximum = thresholds.get(f"max:{metric_id}")
@@ -610,6 +631,14 @@ def promotion_readiness(report: dict[str, Any], *, profile_kind: str, required_p
         resources = case.get("resources") or {}
         if resources.get("accounting_gaps"):
             blockers.append({"field": case["case_id"], "reason": "required-accounting-incomplete"})
+        if resources.get("llm_reconciliation_status") == "incomplete":
+            for gap_id in resources.get("llm_gap_ids") or ["unknown-gap"]:
+                blockers.append(
+                    {
+                        "field": f"{case['case_id']}.llm_accounting",
+                        "reason": f"required-accounting-incomplete:{gap_id}",
+                    }
+                )
     eligible_projects = {
         item.get("project_id") for item in report.get("cases", [])
         if item.get("effectiveness_eligible") and item.get("support_level") != "unsupported"

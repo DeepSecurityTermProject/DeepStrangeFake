@@ -65,6 +65,17 @@ class LLMClient(Protocol):
         ...
 
 
+class ProviderAttemptObserver(Protocol):
+    def dispatch_started(self, details: dict[str, Any] | None = None) -> str:
+        ...
+
+    def attempt_failed(self, attempt_id: str, details: dict[str, Any] | None = None) -> None:
+        ...
+
+    def attempt_response(self, attempt_id: str, response: LLMResponse) -> None:
+        ...
+
+
 class MockLLMClient:
     def __init__(self, responses: dict[str, Any] | None = None):
         self.responses = responses or {}
@@ -111,6 +122,13 @@ class OpenAICompatibleClient:
             )
 
     def complete(self, request: LLMRequest) -> LLMResponse:
+        return self.complete_with_attempt_observer(request, None)
+
+    def complete_with_attempt_observer(
+        self,
+        request: LLMRequest,
+        observer: ProviderAttemptObserver | None,
+    ) -> LLMResponse:
         started = time.monotonic()
         url = self.config.base_url.rstrip("/") + "/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
@@ -122,13 +140,23 @@ class OpenAICompatibleClient:
             data = json.dumps(_request_body(request, self.config, response_format)).encode("utf-8")
             for retry_index in range(1, attempts_per_format + 1):
                 total_attempts += 1
+                attempt_id = (
+                    observer.dispatch_started(
+                        {
+                            "attempt_index": total_attempts,
+                            "response_format": response_format or "text",
+                        }
+                    )
+                    if observer
+                    else ""
+                )
                 try:
                     http_request = urllib.request.Request(url, data=data, headers=headers, method="POST")
                     with urllib.request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
                         raw = json.loads(response.read().decode("utf-8"))
                     text = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
                     parsed = _try_parse_json(text)
-                    return LLMResponse(
+                    result = LLMResponse(
                         request_id=request.id or "",
                         provider=self.config.provider,
                         model=raw.get("model") or request.model or self.config.model,
@@ -139,8 +167,20 @@ class OpenAICompatibleClient:
                         latency_ms=int((time.monotonic() - started) * 1000),
                         raw_response=raw,
                     )
+                    if observer:
+                        observer.attempt_response(attempt_id, result)
+                    return result
                 except urllib.error.HTTPError as exc:
                     last_error = exc
+                    if observer:
+                        observer.attempt_failed(
+                            attempt_id,
+                            {
+                                "error_type": "http",
+                                "status_code": exc.code,
+                                "response_format": response_format or "text",
+                            },
+                        )
                     if exc.code in {401, 403}:
                         raise _provider_error("authentication", self.config, total_attempts, exc, exc.code)
                     if exc.code == 429:
@@ -152,19 +192,27 @@ class OpenAICompatibleClient:
                         raise _provider_error("invalid_request", self.config, total_attempts, exc, exc.code)
                 except (TimeoutError, socket.timeout) as exc:
                     last_error = exc
+                    if observer:
+                        observer.attempt_failed(attempt_id, {"error_type": "timeout"})
                     if retry_index >= attempts_per_format:
                         raise _provider_error("timeout", self.config, total_attempts, exc)
                 except json.JSONDecodeError as exc:
                     last_error = exc
+                    if observer:
+                        observer.attempt_failed(attempt_id, {"error_type": "invalid_json"})
                     if retry_index >= attempts_per_format:
                         raise _provider_error("invalid_json", self.config, total_attempts, exc)
                 except urllib.error.URLError as exc:
                     last_error = exc
+                    error_type = "timeout" if isinstance(exc.reason, (TimeoutError, socket.timeout)) else "network"
+                    if observer:
+                        observer.attempt_failed(attempt_id, {"error_type": error_type})
                     if retry_index >= attempts_per_format:
-                        error_type = "timeout" if isinstance(exc.reason, (TimeoutError, socket.timeout)) else "network"
                         raise _provider_error(error_type, self.config, total_attempts, exc)
                 except OSError as exc:
                     last_error = exc
+                    if observer:
+                        observer.attempt_failed(attempt_id, {"error_type": "network"})
                     if retry_index >= attempts_per_format:
                         raise _provider_error("network", self.config, total_attempts, exc)
         raise _provider_error(
@@ -222,7 +270,9 @@ def build_llm_client(config: LlmConfig) -> LLMClient:
 
 
 class LLMBudgetExceeded(RuntimeError):
-    pass
+    def __init__(self, message: str, *, response: LLMResponse | None = None):
+        super().__init__(message)
+        self.response = response
 
 
 class BudgetedLLMClient:
@@ -238,16 +288,24 @@ class BudgetedLLMClient:
             raise LLMBudgetExceeded("LLM request budget exhausted")
         if self.tokens_used >= self.token_budget:
             raise LLMBudgetExceeded("LLM token budget exhausted")
+        self.requests_used += 1
         response = self.inner.complete(request)
         total = response.usage.get("total_tokens")
         if total is None:
-            total = int(response.usage.get("prompt_tokens") or 0) + int(
-                response.usage.get("completion_tokens") or 0
-            )
-        next_total = self.tokens_used + int(total or 0)
-        self.requests_used += 1
+            prompt = response.usage.get("prompt_tokens")
+            completion = response.usage.get("completion_tokens")
+            if (
+                isinstance(prompt, int)
+                and not isinstance(prompt, bool)
+                and isinstance(completion, int)
+                and not isinstance(completion, bool)
+            ):
+                total = prompt + completion
+        if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+            return response
+        next_total = self.tokens_used + total
         if next_total > self.token_budget:
-            raise LLMBudgetExceeded("LLM response exceeded token budget")
+            raise LLMBudgetExceeded("LLM response exceeded token budget", response=response)
         self.tokens_used = next_total
         return response
 
@@ -275,13 +333,21 @@ def validate_json_schema(value: Any, schema: dict[str, Any]) -> None:
             raise LLMValidationError(f"Field value must be at most {schema['maximum']}")
 
 
-def persist_llm_artifact(root: Path | str, request: LLMRequest, response: LLMResponse) -> Path:
+def persist_llm_artifact(
+    root: Path | str,
+    request: LLMRequest,
+    response: LLMResponse,
+    secret_values: list[str] | tuple[str, ...] | None = None,
+) -> Path:
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     path = immutable_path(root / f"{request.role}-{response.id}.json")
     path.write_text(
         json.dumps(
-            redact_secrets({"request": request.to_dict(), "response": response.to_dict()}),
+            redact_secrets(
+                {"request": request.to_dict(), "response": response.to_dict()},
+                secret_values,
+            ),
             ensure_ascii=False,
             indent=2,
         ),

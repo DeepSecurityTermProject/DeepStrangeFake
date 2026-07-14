@@ -413,6 +413,32 @@ class WebBackendArtifactTests(unittest.TestCase):
             )
             bus = MessageBus("run-1", run_dir / "messages" / "messages.jsonl")
             bus.publish("runtime", "analysis", "runtime.task", {"role": "analysis", "status": "succeeded"})
+            from audit_agent.llm_accounting import AuditedLLMGateway, LifecycleLedger
+            from audit_agent.models import LLMRequest, LLMResponse
+
+            class FixtureClient:
+                def complete(self, request):
+                    return LLMResponse(
+                        request_id=request.id or "",
+                        provider="mock",
+                        model=request.model,
+                        text='{"ok":true}',
+                        parsed_json={"ok": True},
+                        usage={"total_tokens": 3},
+                    )
+
+            request = LLMRequest(role="analysis", prompt="fixture", model="fixture", provider="mock")
+            gateway = AuditedLLMGateway(
+                FixtureClient(),
+                LifecycleLedger(run_dir, "run-1"),
+                request_budget=1,
+                token_budget=10,
+            )
+            receipt = gateway.invoke(request)
+            gateway.record_schema(receipt, valid=True)
+            gateway.record_policy(receipt, accepted=True)
+            gateway.terminalize(receipt, "accepted")
+            Path(receipt.event_refs[2]).unlink()
             (run_dir / "reports" / "report.json").write_text(
                 json.dumps({"executive_summary": {"validated_count": 1}}),
                 encoding="utf-8",
@@ -427,6 +453,12 @@ class WebBackendArtifactTests(unittest.TestCase):
             self.assertEqual(client.get(f"/api/runs/{job.job_id}/runtime-state").json()["status"], "succeeded")
             replay = client.get(f"/api/runs/{job.job_id}/replay-summary").json()
             self.assertIn("runtime_lifecycle", replay)
+            self.assertFalse(replay["llm_request_lifecycle"]["complete"])
+            self.assertTrue(replay["llm_request_lifecycle"]["gap_ids"])
+            self.assertIn(
+                receipt.request_group_id,
+                replay["llm_request_lifecycle"]["incomplete_groups"],
+            )
             self.assertEqual(
                 client.get(f"/api/runs/{job.job_id}/reports/report.json").json()["executive_summary"]["validated_count"],
                 1,

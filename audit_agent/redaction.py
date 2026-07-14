@@ -35,6 +35,11 @@ def redact_text(value: str, secret_values: list[str] | tuple[str, ...] | None = 
     text = re.sub(r"\bAKIA[0-9A-Z]{16}\b", REDACTION_MARKER, text)
     text = re.sub(r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_-]{12,}\b", REDACTION_MARKER, text)
     text = re.sub(r"\bsk-[A-Za-z0-9_-]{12,}\b", REDACTION_MARKER, text)
+    text = re.sub(
+        r"(?i)\b(https?://)[^/@\s:]+:[^/@\s]+@",
+        lambda match: match.group(1) + REDACTION_MARKER + "@",
+        text,
+    )
     return text
 
 

@@ -98,3 +98,21 @@ satisfy its project quota.
 | Docker cleanup failed | Verify exact benchmark/run/case labels and daemon availability; never substitute global cleanup. |
 | Missing API key or model | Load the approved `.env`, use `LLM_API_KEY`, and provide a non-empty real model for a real provider. Never persist the key value. |
 | `remote-download-skipped` or empty scope | Treat the case as not run. Fix acquisition/scope and rerun; `--allow-partial` is diagnostic only. |
+## LLM accounting promotion gate
+
+LLM-enabled cases are baseline-eligible only when their
+`run-resource-summary.v1` reports `ledger_present: true` and
+`llm_reconciliation_status: complete`. Benchmark validation consumes the same
+stable `llm_gap_ids` as runtime reconciliation; it does not independently infer
+usage by counting files under `llm/`.
+
+Deleted responses or lifecycle events, duplicate usage, corrupt events,
+unknown dispatched usage, and budget-counter disagreements block promotion and
+identify the affected case and gap ID. A genuinely LLM-disabled case remains
+eligible with complete zero usage. A legacy run without the ledger is readable
+but is not eligible for strict LLM-enabled promotion.
+
+Promotion validation recomputes reconciliation from the current run directory
+and runtime budget counters, then compares live totals and contributing refs
+with the stored summary. A previously complete but stale summary cannot mask
+later artifact deletion or corruption.

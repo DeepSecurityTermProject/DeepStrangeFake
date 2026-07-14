@@ -19,7 +19,7 @@ from .benchmark_evaluation import aggregate_repetitions, promotion_readiness
 from .benchmark_runtime import AtomicJsonStore, run_child_scan
 from .config import AuditConfig
 from .integration import load_integration_environment, run_integration_preflight, run_integration_smoke
-from .message_bus import replay_summary
+from .message_bus import replay_run_summary
 from .pipeline import run_audit
 
 
@@ -284,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "benchmark-child":
         return run_child_scan(args.case_config)
     if args.command == "replay":
-        print(json.dumps(replay_summary(args.messages), ensure_ascii=False, indent=2))
+        print(json.dumps(replay_run_summary(args.messages), ensure_ascii=False, indent=2))
         return 0
     if args.command == "integration":
         include_llm = args.llm or not args.mcp

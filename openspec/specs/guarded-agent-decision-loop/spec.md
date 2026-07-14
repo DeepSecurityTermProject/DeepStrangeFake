@@ -4,15 +4,23 @@
 TBD - created by archiving change enable-llm-agent-decision-loop. Update Purpose after archive.
 ## Requirements
 ### Requirement: Orchestrator LLM proposals affect audit planning
-The system SHALL allow validated Orchestrator LLM proposals to influence audit scope, budgets, focus areas, and agent order.
+The system SHALL allow validated Orchestrator LLM proposals to influence audit scope, budgets, focus areas, initial agent order, and bounded future execution-graph mutations at registered replanning checkpoints.
 
 #### Scenario: Valid plan proposal is merged
-- **WHEN** Orchestrator LLM output passes schema and policy gates
-- **THEN** the final audit plan SHALL include accepted model-proposed focus areas, budget adjustments, and agent ordering decisions.
+- **WHEN** initial Orchestrator LLM output passes schema and policy gates
+- **THEN** the final audit plan SHALL include accepted model-proposed focus areas, budget adjustments, and supported ordering decisions used to configure the deterministic graph.
+
+#### Scenario: Valid graph mutation is committed
+- **WHEN** an Orchestrator graph proposal at an eligible checkpoint references registered operations and templates and passes graph, safety, and budget gates
+- **THEN** the runtime SHALL commit a revisioned mutation whose accepted operations can affect future scheduled nodes.
 
 #### Scenario: Unsafe plan proposal is denied
-- **WHEN** Orchestrator LLM output requests a vulnerability class, validation level, or live action outside configured policy
-- **THEN** the system SHALL deny that part of the proposal and record a policy-gate result.
+- **WHEN** Orchestrator LLM output requests a vulnerability class, validation level, live action, graph operation, node template, or budget outside configured policy
+- **THEN** the system SHALL deny that part of the proposal and record a policy-gate result without executing the denied behavior.
+
+#### Scenario: Proposal attempts to rewrite completed execution
+- **WHEN** an Orchestrator proposal targets a running, completed, or immutable required node
+- **THEN** deterministic policy SHALL deny the mutation and retain the last committed valid graph.
 
 ### Requirement: Recon LLM proposals select bounded tools and context
 The system SHALL allow validated Recon LLM proposals to request safe tools, memory queries, context slices, and CVE MCP lookups through the tool protocol.
@@ -53,4 +61,3 @@ The system SHALL mark every final agent decision with its source.
 #### Scenario: Merged decision is produced
 - **WHEN** a final plan, handoff, candidate, or verification decision is produced
 - **THEN** it SHALL include whether the decision source was `llm`, `deterministic`, `merged`, `fallback`, or `policy-denied`.
-

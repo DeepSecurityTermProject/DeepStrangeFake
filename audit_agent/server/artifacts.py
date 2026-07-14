@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..message_bus import replay_summary
+from ..message_bus import replay_run_summary
 from .job_store import ScanJob
 
 
@@ -22,7 +22,7 @@ def read_runtime_state(job: ScanJob) -> dict[str, Any]:
 
 def read_replay_summary(job: ScanJob) -> dict[str, Any]:
     path = _resolve_job_file(job, "messages", "messages.jsonl")
-    return replay_summary(path)
+    return replay_run_summary(path, run_dir=job.run_dir)
 
 
 def read_report_json(job: ScanJob) -> dict[str, Any]:

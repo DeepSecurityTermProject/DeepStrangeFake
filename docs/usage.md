@@ -490,3 +490,27 @@ audit-agent scan --target fixtures/integration_smoke --graph-mode deterministic-
 audit-agent scan --target fixtures/integration_smoke --graph-mode adaptive-graph --runtime --llm-decisions --llm-decision-roles orchestrator --llm-provider mock
 audit-agent scan --target fixtures/integration_smoke --graph-mode legacy
 ```
+
+## LLM accounting and troubleshooting
+
+For new runs, inspect `llm_attempts/<request-group-id>/` in sequence order and
+then `reports/run-resource-summary.v1.json`. Important fields are
+`accounting_source`, `ledger_present`, `llm_reconciliation_status`,
+`llm_provider_attempts`, `llm_retries`, `llm_gap_ids`, and
+`llm_contributing_refs`.
+
+A request budget denial before dispatch creates a request group but adds no
+`llm_requests`, provider attempts, or tokens. A retry adds a provider attempt,
+not another request group. A response rejected by schema or policy is still
+persisted and charged. If an attempt dispatched without trustworthy usage,
+request counts remain exact while `llm_tokens` is `null`.
+
+Common gap reasons include `missing-terminal`, `missing-response-ref`,
+`duplicate-response`, `usage-unknown`, `budget-counter-mismatch`, and
+`legacy-accounting-unavailable`. Do not edit or repair a run directory to clear
+them; rerun the fixture. Historical runs without `llm_attempts/` remain
+readable as `legacy-artifact-scan`, but cannot claim lifecycle completeness.
+`corrupt-response-artifact`, `response-request-id-mismatch`,
+`response-id-mismatch`, and `response-usage-mismatch` mean that a response file
+exists but no longer agrees with its lifecycle event; replay and summaries
+fail closed in each case.

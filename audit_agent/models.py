@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -252,7 +253,7 @@ class PromptRenderRecord:
 
     def __post_init__(self) -> None:
         if not self.id:
-            self.id = stable_id("PR", self.template_id, self.version, self.role, self.rendered)
+            self.id = stable_id("PR", self.template_id, self.version, self.role, self.created_at, uuid.uuid4().hex)
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
@@ -274,7 +275,7 @@ class LLMRequest:
 
     def __post_init__(self) -> None:
         if not self.id:
-            self.id = stable_id("LR", self.role, self.model, self.prompt, self.created_at)
+            self.id = stable_id("LR", self.role, self.model, self.provider, self.created_at, uuid.uuid4().hex)
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
@@ -298,7 +299,7 @@ class LLMResponse:
 
     def __post_init__(self) -> None:
         if not self.id:
-            self.id = stable_id("LS", self.request_id, self.provider, self.model, self.text)
+            self.id = stable_id("LS", self.request_id, self.provider, self.model, self.created_at, uuid.uuid4().hex)
 
     def to_dict(self) -> dict[str, Any]:
         return to_plain(self)
@@ -688,6 +689,14 @@ class PoCRepairRecord:
     normalized_edits: list[PoCNormalizedEdit] = field(default_factory=list)
     prompt_ref: str | None = None
     response_ref: str | None = None
+    request_group_id: str | None = None
+    provider_attempt_ids: list[str] = field(default_factory=list)
+    lifecycle_event_refs: list[str] = field(default_factory=list)
+    schema_ref: str | None = None
+    policy_ref: str | None = None
+    fallback_ref: str | None = None
+    terminal_ref: str | None = None
+    provider_error_ref: str | None = None
     edit_ref: str | None = None
     prior_script_ref: str | None = None
     assembled_script_ref: str | None = None

@@ -922,9 +922,20 @@ class BenchmarkPipelineTests(unittest.TestCase):
 
     def test_markdown_is_derived_from_json_and_promotion_is_fail_closed(self):
         report = _report("run", engine="same")
+        report["cases"][0]["resources"].update(
+            {
+                "accounting_source": "lifecycle-ledger",
+                "llm_reconciliation_status": "incomplete",
+                "llm_gap_ids": ["LLMGAP-fixture"],
+                "llm_tokens": None,
+            }
+        )
         markdown = render_markdown(report)
         self.assertIn("# Benchmark Report", markdown)
         self.assertIn("candidate-recall", markdown)
+        self.assertIn("lifecycle-ledger", markdown)
+        self.assertIn("LLMGAP-fixture", markdown)
+        self.assertIn("| N/A |", markdown)
         readiness = promotion_readiness(report, profile_kind="pilot")
         self.assertFalse(readiness["ready"])
         self.assertIn("requires-3-eligible-projects", {item["reason"] for item in readiness["blockers"]})
@@ -933,7 +944,7 @@ class BenchmarkPipelineTests(unittest.TestCase):
         report = _report("run", engine="same")
         comparison = compare_reports(_report("base", engine="old"), _report("candidate", engine="new"), ["engine"])
         self.assertEqual(canonical_digest(report), "f982c18cd1fe224fbe95d3f038921b4ab4f0b39505ef4729090510ca46dd6806")
-        self.assertEqual(canonical_digest(render_markdown(report)), "88ee5f0d17fcc216042482573e5bc10b9d79a20ed0a37940b37f6ed1da33399b")
+        self.assertEqual(canonical_digest(render_markdown(report)), "9053b06bbe347a65e4495ec94a0b94d2f0c2936558f3e3862c1d013a1a3fab8f")
         self.assertEqual(canonical_digest(comparison), "829a25d53902d0b2ec65f22c8ef75cedb18297f6656271fd0cbc4c869688f001")
 
     def test_full_profile_readiness_never_counts_placeholders(self):

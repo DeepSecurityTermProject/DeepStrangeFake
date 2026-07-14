@@ -5,17 +5,24 @@ from pathlib import Path
 from typing import Callable
 
 from .models import MessageEnvelope
+from .redaction import redact_secrets
 
 
 Subscriber = Callable[[MessageEnvelope], None]
 
 
 class MessageBus:
-    def __init__(self, run_id: str, log_path: Path | str):
+    def __init__(
+        self,
+        run_id: str,
+        log_path: Path | str,
+        secret_values: list[str] | tuple[str, ...] | None = None,
+    ):
         self.run_id = run_id
         self.log_path = Path(log_path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.subscribers: dict[str, list[Subscriber]] = {}
+        self.secret_values = [item for item in (secret_values or []) if item]
 
     def subscribe(self, message_type: str, handler: Subscriber) -> None:
         self.subscribers.setdefault(message_type, []).append(handler)
@@ -35,10 +42,10 @@ class MessageBus:
             sender=sender,
             recipient=recipient,
             message_type=message_type,
-            payload=payload,
+            payload=redact_secrets(payload, self.secret_values),
             correlation_id=correlation_id,
             causation_id=causation_id,
-            artifact_refs=artifact_refs or [],
+            artifact_refs=redact_secrets(artifact_refs or [], self.secret_values),
         )
         with self.log_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(envelope.to_dict(), ensure_ascii=False) + "\n")
@@ -102,6 +109,13 @@ def replay_summary(log_path: Path | str) -> dict:
         "duplicates": 0,
         "target_integrity_changes": 0,
     }
+    llm_request_lifecycle = {
+        "request_groups": {},
+        "provider_attempts": 0,
+        "retries": 0,
+        "terminal_status_counts": {},
+        "incomplete_groups": [],
+    }
     for message in messages:
         counts[message.message_type] = counts.get(message.message_type, 0) + 1
         if message.message_type.startswith("decision.") or message.message_type == "llm.decision":
@@ -133,6 +147,14 @@ def replay_summary(log_path: Path | str) -> dict:
             _add_sandbox_lifecycle(sandbox_lifecycle, message)
         if message.message_type.startswith("poc."):
             _add_repair_lifecycle(repair_lifecycle, message)
+        if message.message_type.startswith("llm.lifecycle."):
+            _add_llm_request_lifecycle(llm_request_lifecycle, message)
+    for group_id, group in llm_request_lifecycle["request_groups"].items():
+        attempts = len(group["provider_attempt_ids"])
+        llm_request_lifecycle["provider_attempts"] += attempts
+        llm_request_lifecycle["retries"] += max(0, attempts - (1 if attempts else 0))
+        if not group.get("terminal_status"):
+            llm_request_lifecycle["incomplete_groups"].append(group_id)
     return {
         "message_count": len(messages),
         "types": counts,
@@ -140,7 +162,96 @@ def replay_summary(log_path: Path | str) -> dict:
         "runtime_lifecycle": runtime_lifecycle,
         "sandbox_lifecycle": sandbox_lifecycle,
         "repair_lifecycle": repair_lifecycle,
+        "llm_request_lifecycle": llm_request_lifecycle,
     }
+
+
+def replay_run_summary(
+    log_path: Path | str,
+    *,
+    run_dir: Path | str | None = None,
+    llm_enabled: bool | None = None,
+) -> dict:
+    """Replay messages while treating the immutable LLM ledger as authoritative."""
+    summary = replay_summary(log_path)
+    message_path = Path(log_path).resolve()
+    if run_dir is None:
+        run_root = message_path.parent.parent if message_path.parent.name == "messages" else message_path.parent
+    else:
+        run_root = Path(run_dir).resolve()
+    if llm_enabled is None:
+        state_path = run_root / "runtime_state" / "state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            configured = (state.get("config_summary") or {}).get("runtime_enabled")
+            if isinstance(configured, bool):
+                llm_enabled = configured
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            pass
+
+    from .llm_accounting import replay_llm_lifecycle
+
+    accounting = replay_llm_lifecycle(run_root, llm_enabled=llm_enabled)
+    summary["llm_accounting"] = accounting
+    lifecycle = summary["llm_request_lifecycle"]
+    lifecycle.update(
+        {
+            "authoritative_source": accounting["accounting_source"],
+            "ledger_present": accounting["ledger_present"],
+            "complete": accounting["complete"],
+            "gap_ids": list(accounting.get("gap_ids") or []),
+            "accounting_gaps": list(accounting.get("gaps") or []),
+            "authoritative_request_groups": list(accounting.get("request_groups") or []),
+        }
+    )
+    if accounting.get("provider_attempts") is not None:
+        lifecycle["provider_attempts"] = accounting["provider_attempts"]
+    if accounting.get("retries") is not None:
+        lifecycle["retries"] = accounting["retries"]
+    incomplete = set(lifecycle.get("incomplete_groups") or [])
+    incomplete.update(
+        str(item.get("request_group_id"))
+        for item in accounting.get("gaps") or []
+        if item.get("request_group_id")
+    )
+    incomplete.update(
+        str(item.get("request_group_id"))
+        for item in accounting.get("request_groups") or []
+        if item.get("terminal_status") == "incomplete"
+    )
+    lifecycle["incomplete_groups"] = sorted(incomplete)
+    return summary
+
+
+def _add_llm_request_lifecycle(lifecycle: dict, message: MessageEnvelope) -> None:
+    payload = message.payload
+    group_id = str(payload.get("request_group_id") or "")
+    if not group_id:
+        return
+    group = lifecycle["request_groups"].setdefault(
+        group_id,
+        {
+            "role": payload.get("role"),
+            "provider_attempt_ids": [],
+            "events": [],
+            "terminal_status": None,
+        },
+    )
+    event = {
+        "event_id": payload.get("event_id"),
+        "kind": payload.get("event_kind"),
+        "message_id": message.id,
+        "artifact_refs": list(message.artifact_refs),
+    }
+    group["events"].append(event)
+    attempt_id = payload.get("provider_attempt_id")
+    if attempt_id and attempt_id not in group["provider_attempt_ids"]:
+        group["provider_attempt_ids"].append(attempt_id)
+    terminal = payload.get("terminal_status")
+    if terminal:
+        group["terminal_status"] = terminal
+        counts = lifecycle["terminal_status_counts"]
+        counts[terminal] = counts.get(terminal, 0) + 1
 
 
 def _runtime_role_summary(runtime_lifecycle: dict, role: str) -> dict:

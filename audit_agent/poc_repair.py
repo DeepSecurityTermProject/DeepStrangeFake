@@ -473,7 +473,7 @@ class LLMPoCRepairAgent:
         attempt_dir = Path(attempt_dir)
         attempt_dir.mkdir(parents=True, exist_ok=True)
         record = default_prompt_registry().render("poc-repair.edits", "v1", context)
-        prompt_ref = persist_prompt(self.run_dir / "prompts", record)
+        prompt_ref = persist_prompt(self.run_dir / "prompts", record, self.secret_values)
         request = LLMRequest(
             role="poc-repair",
             prompt=record.rendered,
@@ -502,9 +502,16 @@ class LLMPoCRepairAgent:
             },
             [str(prompt_ref)],
         )
+        receipt = None
         try:
-            response = self.llm_client.complete(request)
+            if hasattr(self.llm_client, "invoke"):
+                receipt = self.llm_client.invoke(request, prompt_ref=str(prompt_ref))
+                response = receipt.response
+            else:
+                response = self.llm_client.complete(request)
         except LLMProviderError as exc:
+            if hasattr(self.llm_client, "receipt_for"):
+                receipt = self.llm_client.receipt_for(request)
             failed = PoCRepairRecord(
                 finding_id=finding_id,
                 attempt_index=attempt_index,
@@ -514,6 +521,7 @@ class LLMPoCRepairAgent:
                 provider_metadata=exc.to_dict(),
                 validation_errors=[str(exc)],
                 stop_reason=RepairStopReason.PROVIDER_FAILURE,
+                **_repair_receipt_fields(receipt),
             )
             _persist_record(failed, attempt_dir / "repair-record.json")
             self._publish(
@@ -544,6 +552,16 @@ class LLMPoCRepairAgent:
                     "redacted_text": redact_text(response.text, self.secret_values),
                 },
             )
+            expected_record_ref = str(attempt_dir / "repair-record.json")
+            if receipt:
+                self.llm_client.record_schema(receipt, valid=False, errors=exc.errors)
+                self.llm_client.record_policy(receipt, accepted=False, reasons=exc.errors)
+                self.llm_client.record_fallback(receipt, "invalid-contract", refs=[str(response_ref)])
+                self.llm_client.terminalize(
+                    receipt,
+                    "fallback",
+                    decision_refs=[str(response_ref), expected_record_ref],
+                )
             failed = PoCRepairRecord(
                 finding_id=finding_id,
                 attempt_index=attempt_index,
@@ -554,6 +572,7 @@ class LLMPoCRepairAgent:
                 provider_metadata=provider_metadata,
                 validation_errors=exc.errors,
                 stop_reason=RepairStopReason.INVALID_CONTRACT,
+                **_repair_receipt_fields(receipt),
             )
             _persist_record(failed, attempt_dir / "repair-record.json")
             self._publish(
@@ -578,6 +597,15 @@ class LLMPoCRepairAgent:
                 "provider": provider_metadata,
             },
         )
+        expected_record_ref = str(attempt_dir / "repair-record.json")
+        if receipt:
+            self.llm_client.record_schema(receipt, valid=True)
+            self.llm_client.record_policy(receipt, accepted=True)
+            self.llm_client.terminalize(
+                receipt,
+                "accepted",
+                decision_refs=[str(response_ref), expected_record_ref],
+            )
         successful = PoCRepairRecord(
             finding_id=finding_id,
             attempt_index=attempt_index,
@@ -590,6 +618,7 @@ class LLMPoCRepairAgent:
             edit_hash=proposal.edit_hash,
             manifest_ref=manifest.metadata_path,
             provider_metadata=provider_metadata,
+            **_repair_receipt_fields(receipt),
         )
         _persist_record(successful, attempt_dir / "repair-record.json")
         self._publish(
@@ -624,6 +653,21 @@ class LLMPoCRepairAgent:
             payload,
             artifact_refs=[ref for ref in refs if ref],
         )
+
+
+def _repair_receipt_fields(receipt: Any | None) -> dict[str, Any]:
+    if receipt is None:
+        return {}
+    return {
+        "request_group_id": receipt.request_group_id,
+        "provider_attempt_ids": list(receipt.provider_attempt_ids),
+        "lifecycle_event_refs": list(receipt.event_refs),
+        "schema_ref": receipt.schema_ref,
+        "policy_ref": receipt.policy_ref,
+        "fallback_ref": receipt.fallback_ref,
+        "terminal_ref": receipt.terminal_ref,
+        "provider_error_ref": receipt.error_ref,
+    }
 
 
 class TrustedPoCAssembler:

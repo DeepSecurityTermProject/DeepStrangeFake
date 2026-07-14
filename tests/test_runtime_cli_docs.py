@@ -100,6 +100,10 @@ class RuntimeCliDocsTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertIn("tool.request", output.getvalue())
+            replay = json.loads(output.getvalue())
+            self.assertIn("llm_accounting", replay)
+            self.assertFalse(replay["llm_request_lifecycle"]["complete"])
+            self.assertTrue(replay["llm_request_lifecycle"]["gap_ids"])
 
     def test_graph_decision_smoke_is_explicitly_skipped_without_live_opt_in(self):
         output = io.StringIO()

@@ -32,6 +32,14 @@ class LLMAgentDecision:
     selected_actions: list[dict[str, Any]] = field(default_factory=list)
     prompt_ref: str | None = None
     llm_response_ref: str | None = None
+    request_group_id: str | None = None
+    provider_attempt_ids: list[str] = field(default_factory=list)
+    lifecycle_event_refs: list[str] = field(default_factory=list)
+    schema_ref: str | None = None
+    terminal_ref: str | None = None
+    policy_ref: str | None = None
+    fallback_ref: str | None = None
+    provider_error_ref: str | None = None
     provider: str | None = None
     model: str | None = None
     provider_metadata: dict[str, Any] = field(default_factory=dict)
@@ -52,7 +60,6 @@ class LLMAgentDecision:
                 self.action,
                 self.prompt_ref,
                 self.llm_response_ref,
-                self.raw_output,
                 self.created_at,
             )
 
@@ -311,6 +318,7 @@ def persist_decision_bundle(
     llm_decision: LLMAgentDecision,
     policy_gate: DecisionPolicyGate | None = None,
     merged: MergedAgentDecision | None = None,
+    secret_values: list[str] | tuple[str, ...] | None = None,
 ) -> Path:
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
@@ -322,7 +330,10 @@ def persist_decision_bundle(
     path = immutable_path(root / f"{role}-{llm_decision.id}.json")
     path.write_text(
         json.dumps(
-            redact_secrets(payload, _decision_secret_values(llm_decision)),
+            redact_secrets(
+                payload,
+                [*_decision_secret_values(llm_decision), *(secret_values or [])],
+            ),
             ensure_ascii=False,
             indent=2,
         ),

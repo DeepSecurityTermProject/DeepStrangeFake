@@ -24,6 +24,8 @@ from .benchmark_models import (
     contained_path,
     utc_now,
 )
+from .llm_accounting import reconcile_llm_lifecycle
+from .models import stable_id
 from .config import AuditConfig
 from .integration import load_integration_environment
 from .pipeline import run_audit
@@ -898,6 +900,46 @@ def validate_case_completion(case: BenchmarkCase, result: dict[str, Any]) -> tup
         return False, "resource-summary-invalid"
     if summary.target_identity != case.case_id or summary.target_commit != case.commit:
         return False, "resource-identity-mismatch"
+    refs = result.get("artifact_refs") or {}
+    for name in ("report", "runtime_state", "resource_summary"):
+        if not refs.get(name) or not Path(refs[name]).is_file():
+            return False, f"missing-{name}"
+    if int(case.budgets.get("llm_requests", 0)) > 0:
+        if not summary.ledger_present:
+            return False, "llm-accounting-incomplete:legacy-accounting"
+        if summary.llm_reconciliation_status != "complete":
+            blocker = summary.llm_gap_ids[0] if summary.llm_gap_ids else "unknown-gap"
+            return False, f"llm-accounting-incomplete:{blocker}"
+        run_dir = _benchmark_result_run_dir(refs)
+        if run_dir is None:
+            return False, "llm-accounting-incomplete:run-dir-unavailable"
+        counters = _benchmark_runtime_llm_counters(Path(refs["runtime_state"]))
+        if counters is None:
+            blocker = stable_id(
+                "LLMGAP",
+                "benchmark_summary",
+                "runtime-budget-counters-unavailable",
+                case.case_id,
+            )
+            return False, f"llm-accounting-incomplete:{blocker}"
+        live = reconcile_llm_lifecycle(
+            run_dir,
+            llm_enabled=True,
+            budget_counters=counters,
+        )
+        if not live.complete:
+            blocker = live.gap_ids[0] if live.gap_ids else "unknown-gap"
+            return False, f"llm-accounting-incomplete:{blocker}"
+        mismatch = _benchmark_summary_mismatch(summary, live)
+        if mismatch:
+            blocker = stable_id(
+                "LLMGAP",
+                "benchmark_summary",
+                "live-reconciliation-mismatch",
+                case.case_id,
+                mismatch,
+            )
+            return False, f"llm-accounting-incomplete:{blocker}"
     if not summary.scanned_files or summary.scanned_files < 1:
         return False, "empty-scan-scope"
     budget_fields = {
@@ -912,14 +954,66 @@ def validate_case_completion(case: BenchmarkCase, result: dict[str, Any]) -> tup
             return False, f"budget-accounting-missing:{name}"
         if int(used) > int(case.budgets.get(name, 0)):
             return False, f"budget-exceeded:{name}"
-    refs = result.get("artifact_refs") or {}
-    for name in ("report", "runtime_state", "resource_summary"):
-        if not refs.get(name) or not Path(refs[name]).is_file():
-            return False, f"missing-{name}"
     cleanup = result.get("cleanup") or {}
     if cleanup.get("success") is not True:
         return False, "cleanup-failed"
     return True, None
+
+
+def _benchmark_result_run_dir(refs: dict[str, Any]) -> Path | None:
+    explicit = refs.get("run_dir")
+    if explicit and Path(explicit).is_dir():
+        return Path(explicit).resolve()
+    resource_ref = refs.get("resource_summary")
+    if resource_ref:
+        path = Path(resource_ref).resolve()
+        candidate = path.parent.parent if path.parent.name == "reports" else None
+        if candidate and candidate.is_dir():
+            return candidate
+    return None
+
+
+def _benchmark_runtime_llm_counters(path: Path) -> dict[str, int] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        counters = payload.get("llm_accounting")
+        if not isinstance(counters, dict):
+            return None
+        requests = counters.get("requests_used")
+        tokens = counters.get("tokens_used")
+        if any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in (requests, tokens)):
+            return None
+        return {"requests_used": requests, "tokens_used": tokens}
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def _benchmark_summary_mismatch(
+    summary: RunResourceSummary,
+    live: Any,
+) -> str | None:
+    comparisons = {
+        "accounting_source": (summary.accounting_source, live.accounting_source),
+        "total_request_groups": (summary.llm_total_request_groups, live.total_request_groups),
+        "dispatched_request_groups": (summary.llm_dispatched_request_groups, live.llm_requests),
+        "provider_attempts": (summary.llm_provider_attempts, live.provider_attempts),
+        "retries": (summary.llm_retries, live.retries),
+        "pre_dispatch_denials": (summary.llm_pre_dispatch_denials, live.pre_dispatch_denials),
+        "tokens": (summary.llm_tokens, live.llm_tokens),
+        "terminal_status_counts": (
+            summary.llm_terminal_status_counts,
+            live.terminal_status_counts,
+        ),
+        "gap_ids": (sorted(summary.llm_gap_ids), sorted(live.gap_ids)),
+        "contributing_refs": (
+            sorted(str(Path(item).resolve()) for item in summary.llm_contributing_refs),
+            sorted(str(Path(item).resolve()) for item in live.contributing_refs),
+        ),
+    }
+    for field, (recorded, observed) in comparisons.items():
+        if recorded != observed:
+            return field
+    return None
 
 
 def _incomplete_result(case: BenchmarkCase, state: CaseState, reason: str, cleanup: dict[str, Any] | None = None) -> dict[str, Any]:

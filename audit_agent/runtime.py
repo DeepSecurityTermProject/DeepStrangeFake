@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -33,13 +34,14 @@ from .graph_templates import (
     build_deterministic_audit_graph,
 )
 from .intelligence import CveMcpAdapter, normalize_cve_mcp_output
-from .llm import BudgetedLLMClient, build_llm_client, persist_llm_artifact, validate_json_schema
+from .llm import build_llm_client, persist_llm_artifact, validate_json_schema
+from .llm_accounting import AuditedLLMGateway, LifecycleLedger, reconcile_llm_lifecycle
 from .mcp_client import CveMcpClient
 from .memory import LexicalMemoryStore, MemoryIndexer, persist_retrievals
 from .message_bus import MessageBus
 from .models import LLMRequest, ToolCallResult, stable_id, to_plain, utc_now
 from .prompts import persist_prompt, render_default_prompt
-from .redaction import redact_secrets
+from .redaction import redact_secrets, redact_text
 from .reporting import ReportGenerator
 from .repository import analyze_target
 from .resource_summary import build_run_resource_summary
@@ -169,6 +171,7 @@ class RunState:
     checkpoint_counts: dict[str, int] = field(default_factory=dict)
     execution_path: list[str] = field(default_factory=list)
     graph_fallback_reason: str = ""
+    llm_accounting: dict[str, Any] = field(default_factory=dict)
 
     def mark_running(self, message_ref: str | None = None) -> None:
         self.status = "running"
@@ -280,10 +283,17 @@ class AgentRegistry:
 
 
 class ArtifactStore:
-    def __init__(self, run: RunContext, bus: MessageBus | None = None, run_state: RunState | None = None):
+    def __init__(
+        self,
+        run: RunContext,
+        bus: MessageBus | None = None,
+        run_state: RunState | None = None,
+        secret_values: list[str] | None = None,
+    ):
         self.run = run
         self.bus = bus
         self.run_state = run_state
+        self.secret_values = [item for item in (secret_values or []) if item]
 
     def write_json(
         self,
@@ -293,7 +303,7 @@ class ArtifactStore:
         task_state: TaskState | None = None,
         redact: bool = True,
     ) -> str:
-        value = redact_secrets(to_plain(payload)) if redact else to_plain(payload)
+        value = redact_secrets(to_plain(payload), self.secret_values) if redact else to_plain(payload)
         path = self.run.write_json_artifact(category, name, value)
         self._record_artifact(path, category, task_state)
         return str(path)
@@ -302,22 +312,29 @@ class ArtifactStore:
         target_dir = self.run.path / category
         target_dir.mkdir(parents=True, exist_ok=True)
         path = immutable_path(target_dir / name)
-        path.write_text(content, encoding="utf-8")
+        path.write_text(redact_text(content, self.secret_values), encoding="utf-8")
         self._record_artifact(path, category, task_state)
         return str(path)
 
     def write_prompt(self, record, task_state: TaskState | None = None) -> str:
-        path = persist_prompt(self.run.path / "prompts", record)
+        path = persist_prompt(self.run.path / "prompts", record, self.secret_values)
         self._record_artifact(path, "prompts", task_state)
         return str(path)
 
     def write_llm(self, request: LLMRequest, response, task_state: TaskState | None = None) -> str:
-        path = persist_llm_artifact(self.run.path / "llm", request, response)
+        path = persist_llm_artifact(self.run.path / "llm", request, response, self.secret_values)
         self._record_artifact(path, "llm", task_state)
         return str(path)
 
     def write_decision(self, role: str, proposal, gate=None, merged=None, task_state: TaskState | None = None) -> str:
-        path = persist_decision_bundle(self.run.path / "decisions", role, proposal, gate, merged)
+        path = persist_decision_bundle(
+            self.run.path / "decisions",
+            role,
+            proposal,
+            gate,
+            merged,
+            self.secret_values,
+        )
         self._record_artifact(path, "decisions", task_state)
         return str(path)
 
@@ -472,6 +489,7 @@ class AgentRuntime:
         self.artifacts: ArtifactStore | None = None
         self.bus: MessageBus | None = None
         self.tool_broker: ToolBroker | None = None
+        self.llm_gateway: AuditedLLMGateway | None = None
         self.runtime_refs: dict[str, list[str]] = {
             "prompt_refs": [],
             "llm_response_refs": [],
@@ -481,6 +499,7 @@ class AgentRuntime:
             "tool_call_refs": [],
             "decision_refs": [],
             "runtime_task_refs": [],
+            "llm_lifecycle_refs": [],
         }
 
     def run_audit(self, target: str) -> dict[str, Any]:
@@ -509,16 +528,15 @@ class AgentRuntime:
         )
         self.bus = self._build_bus(target)
         self.run_state.mark_running()
-        self.artifacts = ArtifactStore(self.run, bus=self.bus, run_state=self.run_state)
+        self.artifacts = ArtifactStore(
+            self.run,
+            bus=self.bus,
+            run_state=self.run_state,
+            secret_values=[os.environ.get(config.llm.api_key_env, "")],
+        )
         self.tool_broker = ToolBroker(config, self.artifacts, bus=self.bus)
         self.artifacts.write_json("metadata", "repository.json", metadata.to_dict())
-        llm_client = build_llm_client(config.llm) if config.runtime_enabled else None
-        if llm_client and config.llm.request_budget is not None:
-            llm_client = BudgetedLLMClient(
-                llm_client,
-                request_budget=config.llm.request_budget,
-                token_budget=config.llm.token_budget,
-            )
+        llm_client = self._build_audited_llm_client() if config.runtime_enabled else None
 
         plan_task = self._start_task("orchestrator", "agent")
         plan_output = self._invoke_agent("orchestrator", plan_task, {"metadata": metadata})
@@ -543,6 +561,7 @@ class AgentRuntime:
                     raw_output=response.text,
                     repair_enabled=config.llm_decisions.repair_enabled,
                 )
+                self._correlate_llm_proposal(proposal, response)
                 gate = evaluate_decision_policy("orchestrator", proposal, config)
                 plan = self._apply_orchestrator_proposal(plan, proposal, gate)
                 merged = merge_decision(
@@ -554,6 +573,7 @@ class AgentRuntime:
                     final_output={"plan": plan.to_dict()},
                 )
                 merged.policy_gate_id = gate.id
+                self._finalize_decision_accounting(proposal, gate, merged)
                 path = self.artifacts.write_decision("orchestrator", proposal, gate, merged, plan_task)
                 self._publish_decision_events("orchestrator", proposal, gate, merged, [path], plan_task)
         plan_path = self.artifacts.write_json("metadata", "plan.json", plan.to_dict(), plan_task)
@@ -683,6 +703,7 @@ class AgentRuntime:
                     raw_output=response.text,
                     repair_enabled=config.llm_decisions.repair_enabled,
                 )
+                self._correlate_llm_proposal(proposal, response)
                 gate = evaluate_decision_policy("recon", proposal, config)
                 if gate.status == "accepted":
                     self._apply_recon_proposal(recon, proposal)
@@ -698,6 +719,7 @@ class AgentRuntime:
                     final_output={"handoff": recon.handoff.to_dict(), "payload": recon.payload},
                 )
                 merged.policy_gate_id = gate.id
+                self._finalize_decision_accounting(proposal, gate, merged)
                 path = self.artifacts.write_decision("recon", proposal, gate, merged, recon_task)
                 self._publish_decision_events("recon", proposal, gate, merged, [path], recon_task)
             elif self.bus:
@@ -741,6 +763,7 @@ class AgentRuntime:
                     raw_output=response.text,
                     repair_enabled=config.llm_decisions.repair_enabled,
                 )
+                self._correlate_llm_proposal(proposal, response)
                 gate = evaluate_decision_policy("analysis", proposal, config)
                 llm_candidates = []
                 if gate.status == "accepted":
@@ -768,6 +791,7 @@ class AgentRuntime:
                     if "decision_source" not in finding.metadata:
                         annotate_finding_from_decision(finding, proposal, gate, merged)
                         finding.metadata.setdefault("runtime_task_refs", []).append(analysis_task.id or "")
+                self._finalize_decision_accounting(proposal, gate, merged)
                 path = self.artifacts.write_decision("analysis", proposal, gate, merged, analysis_task)
                 self._publish_decision_events("analysis", proposal, gate, merged, [path], analysis_task)
             else:
@@ -815,6 +839,7 @@ class AgentRuntime:
                     raw_output=response.text,
                     repair_enabled=config.llm_decisions.repair_enabled,
                 )
+                self._correlate_llm_proposal(proposal, response)
                 decisions, gate, merged = apply_verification_decision_proposal(
                     candidates,
                     verification.decisions,
@@ -828,6 +853,7 @@ class AgentRuntime:
                     decision.finding.metadata.setdefault("runtime_task_refs", []).append(verification_task.id or "")
                     if decision.llm_confidence is not None:
                         decision.finding.metadata["llm_confidence"] = decision.llm_confidence
+                self._finalize_decision_accounting(proposal, gate, merged)
                 path = self.artifacts.write_decision("verification", proposal, gate, merged, verification_task)
                 self._publish_decision_events("verification", proposal, gate, merged, [path], verification_task)
                 self.artifacts.write_json("findings", "verification-decisions.json", [decision.to_dict() for decision in decisions], verification_task)
@@ -936,7 +962,7 @@ class AgentRuntime:
                     "requires_docker": True,
                 },
                 "message_log": str(self.run.path / "messages" / config.message_bus.log_filename) if self.bus else "",
-                "token_usage": {"mode": "recorded-per-llm-artifact"},
+                "token_usage": {"mode": "lifecycle-ledger"},
                 "verification": {
                     **status_counts,
                     "candidate_count": len(decisions),
@@ -986,6 +1012,11 @@ class AgentRuntime:
             "task_count": len(self.run_state.tasks),
             "roles": sorted({task.role for task in self.run_state.tasks}),
         }
+        runtime_summary["llm_accounting"] = reconcile_llm_lifecycle(
+            self.run.path,
+            llm_enabled=bool(config.runtime_enabled),
+            budget_counters=self.run_state.llm_accounting or None,
+        ).to_dict()
         report = ReportGenerator().build(
             metadata,
             [decision.finding for decision in active_decisions],
@@ -1028,7 +1059,11 @@ class AgentRuntime:
 
     def _build_bus(self, target: str) -> MessageBus | None:
         if self.config.runtime_enabled and self.config.message_bus.enabled and self.run:
-            bus = MessageBus(self.run.run_id, self.run.path / "messages" / self.config.message_bus.log_filename)
+            bus = MessageBus(
+                self.run.run_id,
+                self.run.path / "messages" / self.config.message_bus.log_filename,
+                secret_values=[os.environ.get(self.config.llm.api_key_env, "")],
+            )
             msg = bus.publish("pipeline", "orchestrator", "run.start", {"target": target})
             self.runtime_refs["message_refs"].append(msg.message_id)
             return bus
@@ -1089,15 +1124,30 @@ class AgentRuntime:
             provider=self.config.llm.provider,
             response_schema=prompt.output_schema,
         )
-        response = llm_client.complete(request)
+        receipt = None
+        if isinstance(llm_client, AuditedLLMGateway):
+            receipt = llm_client.invoke(request, prompt_ref=prompt_path)
+            response = receipt.response
+            llm_path = receipt.response_ref or ""
+        else:
+            response = llm_client.complete(request)
+            llm_path = self.artifacts.write_llm(request, response, task)
         try:
             validate_json_schema(response.parsed_json, prompt.output_schema)
+            if receipt:
+                llm_client.record_schema(receipt, valid=True)
         except Exception as exc:
+            if receipt:
+                llm_client.record_schema(receipt, valid=False, errors=[str(exc)])
             if not self._decision_enabled(role):
+                if receipt:
+                    llm_client.record_fallback(receipt, "schema-invalid")
+                    llm_client.terminalize(receipt, "fallback")
                 raise
             response.validation_errors.append(str(exc))
             task.mark_fallback("schema-invalid")
-        llm_path = self.artifacts.write_llm(request, response, task)
+        if receipt and not self._decision_enabled(role):
+            llm_client.terminalize(receipt, "accepted")
         self.runtime_refs["llm_response_refs"].append(response.id or "")
         if self.bus:
             msg = self.bus.publish(
@@ -1109,6 +1159,55 @@ class AgentRuntime:
             )
             self._record_message(msg.message_id, task)
         return response, prompt_path, llm_path
+
+    def _build_audited_llm_client(self) -> AuditedLLMGateway:
+        if not self.run or not self.run_state or not self.artifacts:
+            raise RuntimeError("run-scoped LLM accounting requires initialized runtime state")
+        secret = os.environ.get(self.config.llm.api_key_env, "")
+
+        def event_sink(event, ref):
+            self.runtime_refs["llm_lifecycle_refs"].append(ref)
+            self.run_state.record_artifact(ref)
+            if self.bus:
+                message = self.bus.publish(
+                    "llm-gateway",
+                    "runtime",
+                    f"llm.lifecycle.{event.kind}",
+                    {
+                        "request_group_id": event.request_group_id,
+                        "provider_attempt_id": event.provider_attempt_id,
+                        "event_id": event.event_id,
+                        "event_kind": event.kind,
+                        "terminal_status": event.terminal_status,
+                        "role": event.role,
+                    },
+                    artifact_refs=[ref, *([event.response_ref] if event.response_ref else [])],
+                )
+                self.run_state.record_message(message.message_id)
+
+        ledger = LifecycleLedger(
+            self.run.path,
+            self.run.run_id,
+            secret_values=[secret] if secret else [],
+            event_sink=event_sink,
+        )
+
+        def response_writer(request, response):
+            return self.artifacts.write_llm(request, response)
+
+        self.llm_gateway = AuditedLLMGateway(
+            build_llm_client(self.config.llm),
+            ledger,
+            request_budget=(
+                self.config.llm.request_budget
+                if self.config.llm.request_budget is not None
+                else 1_000_000_000
+            ),
+            token_budget=self.config.llm.token_budget,
+            response_writer=response_writer,
+            accounting_state=self.run_state.llm_accounting,
+        )
+        return self.llm_gateway
 
     def _decision_enabled(self, role: str) -> bool:
         return bool(self.config.runtime_enabled and self.config.llm_decisions.enabled and role in set(self.config.llm_decisions.roles))
@@ -1124,6 +1223,24 @@ class AgentRuntime:
     ) -> None:
         if proposal.id:
             self.runtime_refs["decision_refs"].append(proposal.id)
+        if self.llm_gateway and proposal.llm_response_ref:
+            receipt = self.llm_gateway.receipt_for_response(proposal.llm_response_ref)
+            if receipt and not receipt.terminal_status:
+                accepted = gate.status == "accepted" and not proposal.fallback_reason
+                self.llm_gateway.record_policy(receipt, accepted=accepted, reasons=gate.reasons)
+                if not accepted:
+                    self.llm_gateway.record_fallback(
+                        receipt,
+                        proposal.fallback_reason or "policy-denied",
+                        refs=artifact_refs,
+                    )
+                self.llm_gateway.terminalize(
+                    receipt,
+                    "accepted" if accepted else "fallback",
+                    decision_refs=artifact_refs,
+                )
+                proposal.terminal_ref = receipt.terminal_ref
+                proposal.lifecycle_event_refs = list(receipt.event_refs)
         if gate.status != "accepted" or proposal.fallback_reason:
             task.mark_fallback(proposal.fallback_reason or "policy-denied")
         if not self.bus:
@@ -1174,6 +1291,48 @@ class AgentRuntime:
             msg = self.bus.publish(role, "pipeline", message_type, payload, artifact_refs=artifact_refs)
             self._record_message(msg.message_id, task)
 
+    def _finalize_decision_accounting(self, proposal, gate, merged) -> None:
+        if not self.llm_gateway or not proposal.llm_response_ref:
+            return
+        receipt = self.llm_gateway.receipt_for_response(proposal.llm_response_ref)
+        if not receipt:
+            return
+        accepted = gate.status == "accepted" and not proposal.fallback_reason
+        if not receipt.policy_ref:
+            self.llm_gateway.record_policy(receipt, accepted=accepted, reasons=gate.reasons)
+        if not accepted and not receipt.fallback_ref:
+            self.llm_gateway.record_fallback(
+                receipt,
+                proposal.fallback_reason or "policy-denied",
+                refs=[item for item in (proposal.id, gate.id, merged.id) if item],
+            )
+        if not receipt.terminal_status:
+            expected_decision_ref = str(
+                self.run.path / "decisions" / f"{proposal.role}-{proposal.id}.json"
+            )
+            self.llm_gateway.terminalize(
+                receipt,
+                "accepted" if accepted else "fallback",
+                decision_refs=[
+                    item
+                    for item in (expected_decision_ref, proposal.id, gate.id, merged.id)
+                    if item
+                ],
+            )
+        proposal.request_group_id = receipt.request_group_id
+        proposal.provider_attempt_ids = list(receipt.provider_attempt_ids)
+        proposal.lifecycle_event_refs = list(receipt.event_refs)
+        proposal.schema_ref = receipt.schema_ref
+        proposal.policy_ref = receipt.policy_ref
+        proposal.fallback_ref = receipt.fallback_ref
+        proposal.terminal_ref = receipt.terminal_ref
+        proposal.provider_error_ref = receipt.error_ref
+        proposal.schema_ref = receipt.schema_ref
+        proposal.policy_ref = receipt.policy_ref
+        proposal.fallback_ref = receipt.fallback_ref
+        proposal.terminal_ref = receipt.terminal_ref
+        proposal.provider_error_ref = receipt.error_ref
+
     def _apply_orchestrator_proposal(self, plan, proposal, gate):
         if gate.status != "accepted":
             plan.decision_source = "policy-denied"
@@ -1201,6 +1360,16 @@ class AgentRuntime:
                 plan.agent_order = accepted_order
         plan.decision_source = "merged"
         return plan
+
+    def _correlate_llm_proposal(self, proposal, response) -> None:
+        if not self.llm_gateway or not response or not response.id:
+            return
+        receipt = self.llm_gateway.receipt_for_response(response.id)
+        if not receipt:
+            return
+        proposal.request_group_id = receipt.request_group_id
+        proposal.provider_attempt_ids = list(receipt.provider_attempt_ids)
+        proposal.lifecycle_event_refs = list(receipt.event_refs)
 
     def _apply_recon_proposal(self, recon, proposal) -> None:
         high_risk = proposal.parsed_json.get("high_risk_areas") or []
@@ -1334,16 +1503,15 @@ class _GraphAuditExecution:
         )
         runtime.bus = runtime._build_bus(self.target)
         runtime.run_state.mark_running()
-        runtime.artifacts = ArtifactStore(runtime.run, bus=runtime.bus, run_state=runtime.run_state)
+        runtime.artifacts = ArtifactStore(
+            runtime.run,
+            bus=runtime.bus,
+            run_state=runtime.run_state,
+            secret_values=[os.environ.get(config.llm.api_key_env, "")],
+        )
         runtime.tool_broker = ToolBroker(config, runtime.artifacts, bus=runtime.bus)
         runtime.artifacts.write_json("metadata", "repository.json", self.metadata.to_dict())
-        self.llm_client = build_llm_client(config.llm) if config.runtime_enabled else None
-        if self.llm_client and config.llm.request_budget is not None:
-            self.llm_client = BudgetedLLMClient(
-                self.llm_client,
-                request_budget=config.llm.request_budget,
-                token_budget=config.llm.token_budget,
-            )
+        self.llm_client = runtime._build_audited_llm_client() if config.runtime_enabled else None
         budgets = GraphBudget(
             max_nodes=config.graph.max_nodes,
             max_scheduler_iterations=config.graph.max_scheduler_iterations,
@@ -1441,6 +1609,7 @@ class _GraphAuditExecution:
                         final_output={"plan": plan.to_dict()},
                     )
                     merged.policy_gate_id = gate.id
+                    self.runtime._finalize_decision_accounting(proposal, gate, merged)
                     path = self.runtime.artifacts.write_decision(
                         "orchestrator", proposal, gate, merged, task
                     )
@@ -1489,6 +1658,7 @@ class _GraphAuditExecution:
                         },
                     )
                     merged.policy_gate_id = gate.id
+                    self.runtime._finalize_decision_accounting(proposal, gate, merged)
                     path = self.runtime.artifacts.write_decision("recon", proposal, gate, merged, task)
                     self.runtime._publish_decision_events("recon", proposal, gate, merged, [path], task)
             trace = self.runtime.artifacts.write_json(
@@ -1554,6 +1724,7 @@ class _GraphAuditExecution:
                     for finding in self.candidates:
                         if "decision_source" not in finding.metadata:
                             annotate_finding_from_decision(finding, proposal, gate, merged)
+                    self.runtime._finalize_decision_accounting(proposal, gate, merged)
                     path = self.runtime.artifacts.write_decision("analysis", proposal, gate, merged, task)
                     self.runtime._publish_decision_events("analysis", proposal, gate, merged, [path], task)
                 elif response is not None:
@@ -1610,6 +1781,7 @@ class _GraphAuditExecution:
                     self.verification.decisions = self.decisions
                     for decision in self.decisions:
                         annotate_finding_from_decision(decision.finding, proposal, gate, merged)
+                    self.runtime._finalize_decision_accounting(proposal, gate, merged)
                     path = self.runtime.artifacts.write_decision(
                         "verification", proposal, gate, merged, task
                     )
@@ -1803,9 +1975,10 @@ class _GraphAuditExecution:
         source_id = "reconnaissance" if checkpoint_id == "post-recon" else "analysis"
         hints = list(self.next_actions.get(source_id, []))
         model_status = "disabled"
+        model_receipt = None
         if self.runtime._decision_enabled("orchestrator") and self.llm_client is not None:
             try:
-                model_hints, model_refs = self._graph_model_decision(node, checkpoint_id)
+                model_hints, model_refs, model_receipt = self._graph_model_decision(node, checkpoint_id)
                 hints.extend(item for item in model_hints if item not in hints)
                 model_status = "accepted"
             except Exception as exc:
@@ -1820,6 +1993,9 @@ class _GraphAuditExecution:
             next_actions=hints,
         )
         if not proposal.operations:
+            if model_receipt and not model_receipt.terminal_status:
+                self.llm_client.record_policy(model_receipt, accepted=True)
+                self.llm_client.terminalize(model_receipt, "accepted")
             return GraphNodeResult(
                 outputs={"checkpoint": "no-registered-actions", "model_status": model_status},
                 artifact_refs=model_refs,
@@ -1849,6 +2025,10 @@ class _GraphAuditExecution:
             for key, value in state_snapshot.items():
                 setattr(self.runtime.run_state, key, value)
             self.runtime.run_state.graph_fallback_reason = "mutation-persistence-failed"
+            if model_receipt and not model_receipt.terminal_status:
+                self.llm_client.record_policy(model_receipt, accepted=False, reasons=["mutation-persistence-failed"])
+                self.llm_client.record_fallback(model_receipt, "mutation-persistence-failed")
+                self.llm_client.terminalize(model_receipt, "fallback")
             return GraphNodeResult(
                 outputs={"checkpoint": "fallback", "model_status": model_status},
                 artifact_refs=model_refs,
@@ -1859,6 +2039,23 @@ class _GraphAuditExecution:
             outcome.graph = self.graph
             self.revision_records.append({"revision": self.graph.revision})
         self.mutation_records.append(outcome.to_dict())
+        if model_receipt and not model_receipt.terminal_status:
+            self.llm_client.record_policy(
+                model_receipt,
+                accepted=outcome.committed,
+                reasons=list(outcome.candidate_diagnostics),
+            )
+            if not outcome.committed:
+                self.llm_client.record_fallback(
+                    model_receipt,
+                    outcome.fallback_reason or "policy-denied",
+                    refs=mutation_refs,
+                )
+            self.llm_client.terminalize(
+                model_receipt,
+                "accepted" if outcome.committed else "fallback",
+                decision_refs=mutation_refs,
+            )
         return GraphNodeResult(
             outputs={
                 "checkpoint": "committed" if outcome.committed else "fallback",
@@ -1868,7 +2065,7 @@ class _GraphAuditExecution:
             correlation_refs=[proposal.proposal_id],
         )
 
-    def _graph_model_decision(self, node, checkpoint_id: str) -> tuple[list[str], list[str]]:
+    def _graph_model_decision(self, node, checkpoint_id: str) -> tuple[list[str], list[str], Any]:
         task = self._task_for(node)
         completed = (
             self.recon.payload if checkpoint_id == "post-recon" and self.recon else {
@@ -1903,15 +2100,23 @@ class _GraphAuditExecution:
             response_schema=prompt.output_schema,
             response_format="auto",
         )
-        response = self.llm_client.complete(request)
-        validate_json_schema(response.parsed_json, prompt.output_schema)
-        actions = parse_graph_decision_payload(
-            response.parsed_json,
-            checkpoint_id=checkpoint_id,
-        )
-        llm_path = self.runtime.artifacts.write_llm(request, response, task)
+        receipt = self.llm_client.invoke(request, prompt_ref=prompt_path)
+        response = receipt.response
+        try:
+            validate_json_schema(response.parsed_json, prompt.output_schema)
+            actions = parse_graph_decision_payload(
+                response.parsed_json,
+                checkpoint_id=checkpoint_id,
+            )
+            self.llm_client.record_schema(receipt, valid=True)
+        except Exception as exc:
+            self.llm_client.record_schema(receipt, valid=False, errors=[str(exc)])
+            self.llm_client.record_fallback(receipt, "schema-invalid")
+            self.llm_client.terminalize(receipt, "fallback")
+            raise
+        llm_path = receipt.response_ref or ""
         self.runtime.runtime_refs["llm_response_refs"].append(response.id or "")
-        return actions, [prompt_path, llm_path]
+        return actions, [prompt_path, llm_path], receipt
 
     def _persist_checkpoint_fallback(self, node, checkpoint_id: str, exc: Exception) -> list[str]:
         self.runtime.run_state.graph_fallback_reason = f"model-decision-{type(exc).__name__}"
@@ -2115,9 +2320,14 @@ class _GraphAuditExecution:
                     )
                     if self.runtime.bus
                     else "",
-                    "token_usage": {"mode": "recorded-per-llm-artifact"},
+                    "token_usage": {"mode": "lifecycle-ledger"},
                 }
             )
+        runtime_summary["llm_accounting"] = reconcile_llm_lifecycle(
+            self.runtime.run.path,
+            llm_enabled=bool(self.config.runtime_enabled),
+            budget_counters=self.runtime.run_state.llm_accounting or None,
+        ).to_dict()
         report = ReportGenerator().build(
             self.metadata,
             [item.finding for item in active],

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_models import RESOURCE_SCHEMA_VERSION, RunResourceSummary
+from .llm_accounting import reconcile_llm_lifecycle
 from .models import RepositoryMetadata
 from .redaction import redact_secrets
 
@@ -28,7 +29,29 @@ def build_run_resource_summary(
     run_path = Path(run_dir)
     scanned_files = len(metadata.file_tree)
     scanned_bytes = _scanned_bytes(Path(metadata.root_path or ""), metadata.file_tree) if metadata.root_path else None
-    llm_requests, llm_tokens, llm_gaps, llm_refs = _llm_usage(run_path / "llm")
+    reconciliation = reconcile_llm_lifecycle(
+        run_path,
+        llm_enabled=bool(config.runtime_enabled),
+        budget_counters=(getattr(run_state, "llm_accounting", None) or None),
+    )
+    llm_requests = reconciliation.llm_requests
+    llm_tokens = reconciliation.llm_tokens
+    llm_gaps = [
+        {
+            "field": item.field,
+            "reason": ":".join(
+                part
+                for part in (
+                    item.reason,
+                    item.request_group_id,
+                    item.provider_attempt_id,
+                )
+                if part
+            ),
+        }
+        for item in reconciliation.gaps
+    ]
+    llm_refs = reconciliation.contributing_refs
     runner_counts = _runner_counts(validation_results)
     docker_starts = sum(
         bool((getattr(item, "environment", None) or {}).get("docker_started", False))
@@ -85,6 +108,17 @@ def build_run_resource_summary(
             *llm_refs,
             *[str(item) for item in runtime_refs.get("tool_call_refs", [])],
         ],
+        ledger_present=reconciliation.ledger_present,
+        accounting_source=reconciliation.accounting_source,
+        llm_total_request_groups=reconciliation.total_request_groups,
+        llm_dispatched_request_groups=reconciliation.llm_requests,
+        llm_provider_attempts=reconciliation.provider_attempts,
+        llm_retries=reconciliation.retries,
+        llm_pre_dispatch_denials=reconciliation.pre_dispatch_denials,
+        llm_terminal_status_counts=reconciliation.terminal_status_counts,
+        llm_reconciliation_status=("complete" if reconciliation.complete else "incomplete"),
+        llm_gap_ids=reconciliation.gap_ids,
+        llm_contributing_refs=reconciliation.contributing_refs,
         provider=config.llm.provider if config.runtime_enabled else "disabled",
         model=config.llm.model if config.runtime_enabled else None,
         prompt_schema_version=config.prompts.default_version if config.runtime_enabled else None,

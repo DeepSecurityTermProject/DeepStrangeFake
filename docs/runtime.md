@@ -59,6 +59,27 @@ fallback path.
 no API key. Real OpenAI-compatible mode reads the key from `OPENAI_API_KEY` by
 default and records normalized request/response artifacts under `llm/`.
 
+Every project-audit invocation now passes through the run-scoped audited LLM
+gateway. One request group represents one application invocation; transport
+retries and structured-response fallbacks are separate provider attempts in
+that group. Immutable events are stored under
+`llm_attempts/<request-group-id>/` and the received response is written under
+`llm/` before schema, policy, confidence, or post-response token-budget checks.
+Standalone integration preflight keeps its own integration identity and is not
+included in a project audit's resource summary.
+
+`llm_requests` counts request groups that dispatched at least once. Provider
+attempts and retries are additive fields. `llm_tokens` contains only
+trustworthy provider-reported usage; it is `null`, never silently zero, when a
+dispatched attempt has unknown usage. `run-resource-summary.v1.json` exposes
+ledger presence, accounting source, reconciliation status, stable gap IDs, and
+contributing refs.
+
+Reconciliation parses every referenced response again. The artifact request
+ID, response ID, provider metadata, and normalized usage must agree with the
+correlated lifecycle event; unreadable or mismatched content makes token
+accounting incomplete even if the response file still exists.
+
 ## Prompt Templates
 
 `audit_agent.prompts` provides versioned templates for Orchestrator, Recon,
@@ -102,6 +123,11 @@ traceability.
 Replay summaries include both `decision_lifecycle` and `runtime_lifecycle`.
 `runtime_lifecycle` groups task status counts, tool calls, denials, artifacts,
 service failures, and fallback reasons by role.
+`llm_request_lifecycle` reconstructs request groups, physical attempts,
+retries, terminal outcomes, and incomplete groups without invoking a provider.
+CLI and Web replay merge this message view with the immutable lifecycle ledger
+and expose authoritative completeness, stable gap IDs, and affected request
+groups. Message-log state cannot override a damaged ledger.
 
 ## LLM Decision Loop
 
