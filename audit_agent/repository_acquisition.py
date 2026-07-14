@@ -225,19 +225,26 @@ class _FileLock:
     _thread_locks: dict[str, threading.Lock] = {}
     _guard = threading.Lock()
 
-    def __init__(self, path: Path, timeout_seconds: int):
+    def __init__(self, path: Path, timeout_seconds: int, cancelled: Callable[[], bool] | None = None):
         self.path = path
         self.timeout_seconds = timeout_seconds
         with self._guard:
             self._thread_lock = self._thread_locks.setdefault(str(path), threading.Lock())
         self._fd: int | None = None
+        self.cancelled = cancelled or (lambda: False)
 
     def __enter__(self):
-        if not self._thread_lock.acquire(timeout=self.timeout_seconds):
-            raise AcquisitionError("lock-timeout")
         deadline = time.monotonic() + self.timeout_seconds
+        while not self._thread_lock.acquire(timeout=0.1):
+            if self.cancelled():
+                raise AcquisitionError("acquisition-cancelled")
+            if time.monotonic() >= deadline:
+                raise AcquisitionError("lock-timeout")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         while True:
+            if self.cancelled():
+                self._thread_lock.release()
+                raise AcquisitionError("acquisition-cancelled")
             try:
                 self._fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.write(self._fd, str(os.getpid()).encode("ascii"))
@@ -266,6 +273,8 @@ class RepositoryAcquisitionService:
     ):
         self.config = config
         self.command_runner = command_runner or run_git_command
+        self._uses_default_runner = command_runner is None
+        self._cancellation = threading.local()
         self.cache_root = Path(config.cache_root).expanduser().resolve()
         self.work_root = Path(config.work_root).expanduser().resolve()
 
@@ -274,12 +283,15 @@ class RepositoryAcquisitionService:
         request: AcquisitionRequest,
         *,
         progress_callback: Callable[[str], None] | None = None,
+        cancellation_checker: Callable[[], bool] | None = None,
     ) -> AcquisitionResult:
+        self._cancellation.checker = cancellation_checker or (lambda: False)
         started = time.monotonic()
         normalized = "[REDACTED]"
         revision = "HEAD"
         result: AcquisitionResult | None = None
         try:
+            self._check_cancelled()
             if not self.config.enabled:
                 raise AcquisitionError("remote-acquisition-disabled")
             normalized = normalize_remote_source(request.source, self.config.allowed_hosts)
@@ -300,7 +312,7 @@ class RepositoryAcquisitionService:
             key = acquisition_cache_key(request.cache_identity or normalized)
             mirror = _contained_child(self.cache_root, f"{key}.git")
             lock_path = _contained_child(self.cache_root, f"{key}.lock")
-            with _FileLock(lock_path, self.config.lock_timeout_seconds):
+            with _FileLock(lock_path, self.config.lock_timeout_seconds, self._is_cancelled):
                 self._prepare_mirror(normalized, mirror, commit, result, deadline)
                 resolved = self._git(
                     ["-C", str(mirror), "rev-parse", f"{commit}^{{commit}}"], result, deadline
@@ -334,6 +346,7 @@ class RepositoryAcquisitionService:
         finally:
             if result is not None:
                 result.duration_ms = int((time.monotonic() - started) * 1000)
+            self._cancellation.checker = lambda: False
 
     def _resolve_revision(
         self, source: str, revision: str, result: AcquisitionResult, deadline: float
@@ -450,6 +463,7 @@ class RepositoryAcquisitionService:
             if len(members) > self.config.max_archive_members:
                 raise AcquisitionError("archive-member-budget-exceeded")
             for member in members:
+                self._check_cancelled()
                 pure = PurePosixPath(member.name)
                 if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
                     raise AcquisitionError("archive-path-invalid")
@@ -499,7 +513,28 @@ class RepositoryAcquisitionService:
         timeout = max(1, min(self.config.command_timeout_seconds, int(remaining)))
         argv = _hardened_git_argv(args)
         started = time.monotonic()
-        raw = self.command_runner(argv, None, _minimal_git_environment(), timeout)
+        self._check_cancelled()
+        if self._uses_default_runner:
+            from .benchmark_runtime import ProcessTreeRunner
+
+            completed = ProcessTreeRunner().run(
+                argv,
+                cwd=None,
+                env=_minimal_git_environment(),
+                timeout_seconds=timeout,
+                cancelled=self._is_cancelled,
+            )
+            if completed.cancelled:
+                raise AcquisitionError("acquisition-cancelled")
+            raw = GitCommandResult(
+                completed.returncode or 0,
+                completed.stdout,
+                completed.stderr,
+                timed_out=completed.timed_out,
+            )
+        else:
+            raw = self.command_runner(argv, None, _minimal_git_environment(), timeout)
+        self._check_cancelled()
         safe_argv = [_redact_argument(item) for item in argv]
         outcome = AcquisitionCommandOutcome(
             argv=safe_argv,
@@ -511,6 +546,14 @@ class RepositoryAcquisitionService:
         )
         result.command_outcomes.append(outcome)
         return outcome
+
+    def _is_cancelled(self) -> bool:
+        checker = getattr(self._cancellation, "checker", None)
+        return bool(checker and checker())
+
+    def _check_cancelled(self) -> None:
+        if self._is_cancelled():
+            raise AcquisitionError("acquisition-cancelled")
 
     def cleanup(self, result: AcquisitionResult) -> AcquisitionCleanup:
         if not result.export_path:
@@ -554,6 +597,7 @@ def prepare_audit_target(
     job_id: str | None = None,
     service: RepositoryAcquisitionService | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    cancellation_checker: Callable[[], bool] | None = None,
 ) -> PreparedAuditTarget:
     parsed = urlsplit(target)
     windows_drive_path = bool(re.match(r"^[A-Za-z]:[\\/]", target))
@@ -575,6 +619,7 @@ def prepare_audit_target(
             job_id=job_id or stable_id("PREP", normalized, utc_now()),
         ),
         progress_callback=progress_callback,
+        cancellation_checker=cancellation_checker,
     )
     if acquisition.status != "ready" or not acquisition.export_path or not acquisition.resolved_commit:
         raise AcquisitionError(

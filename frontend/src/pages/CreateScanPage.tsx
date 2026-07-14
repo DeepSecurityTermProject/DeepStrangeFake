@@ -7,8 +7,8 @@ import type { ApiOptions, GraphMode, McpMode, MemoryMode, SandboxRunner, Validat
 
 const DEFAULT_OPTIONS: ApiOptions = {
   provider_modes: ["mock", "openai-compatible"],
-  graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
-  default_graph_mode: "deterministic-graph",
+  graph_modes: ["agent-led", "legacy", "deterministic-graph", "adaptive-graph"],
+  default_graph_mode: "agent-led",
   memory_modes: ["lexical", "embedding", "off"],
   mcp_modes: ["on", "degraded", "off"],
   validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],

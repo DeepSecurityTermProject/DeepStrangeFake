@@ -27,12 +27,12 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(config.mcp.transport, "stdio")
         self.assertEqual(config.memory.mode, "lexical")
         self.assertTrue(config.message_bus.enabled)
-        self.assertEqual(config.graph.mode, "deterministic-graph")
+        self.assertEqual(config.graph.mode, "agent-led")
 
     def test_graph_runtime_mode_validates_and_serializes(self):
         from audit_agent.config import GraphRuntimeConfig
 
-        for mode in ("legacy", "deterministic-graph", "adaptive-graph"):
+        for mode in ("agent-led", "legacy", "deterministic-graph", "adaptive-graph"):
             config = AuditConfig.default()
             config.graph = GraphRuntimeConfig(mode=mode)
             self.assertEqual(config.to_dict()["graph"]["mode"], mode)
@@ -46,7 +46,10 @@ class RuntimeFoundationTests(unittest.TestCase):
             names = {path.name for path in run.path.iterdir()}
 
             self.assertTrue(
-                {"prompts", "llm", "messages", "memory", "mcp", "runtime_errors"}.issubset(names)
+                {
+                    "prompts", "llm", "messages", "memory", "mcp", "runtime_errors",
+                    "signals", "investigations", "evidence-gates", "verification-plans",
+                }.issubset(names)
             )
 
     def test_runtime_models_are_serializable_with_stable_ids(self):

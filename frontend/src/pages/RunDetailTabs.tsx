@@ -55,6 +55,7 @@ function SummaryTab({ job, reportJson }: { job: JobStatusResponse; reportJson?: 
   const summary = job.summary ?? {};
   const reportSummary = reportJson?.executive_summary ?? {};
   const graph = reportJson?.runtime?.graph;
+  const investigation = reportJson?.runtime?.investigation;
   return (
     <div className="summary-grid">
       <Metric label="Status" value={<StatusBadge status={job.status} />} />
@@ -79,9 +80,42 @@ function SummaryTab({ job, reportJson }: { job: JobStatusResponse; reportJson?: 
       {graph && <Metric label="Graph mutations" value={`${graph.mutation_counts?.committed ?? 0} committed / ${graph.mutation_counts?.denied ?? 0} denied`} />}
       {graph && <Metric label="Graph checkpoints" value={stringValue(graph.checkpoint_total)} />}
       {graph && <Metric label="Graph fallback" value={graph.fallback_reason || "none"} />}
+      {investigation && <Metric label="Requested mode" value={investigation.requested_mode ?? "n/a"} />}
+      {investigation && <Metric label="Effective mode" value={investigation.effective_mode ?? "n/a"} />}
+      {investigation && <Metric label="Hypotheses" value={formatCounts(investigation.hypothesis_counts)} />}
+      {investigation && <Metric label="Evidence gates" value={formatCounts(investigation.evidence_gate_counts)} />}
+      {investigation && <Metric label="Verification plans" value={String(investigation.verification_plan_refs?.length ?? 0)} />}
+      {investigation && <Metric label="Investigation budget" value={formatBudget(investigation.investigation_budget)} />}
+      {investigation && <Metric label="Checkpoint" value={stringValue(investigation.checkpoint_summary?.latest_ref)} />}
+      {investigation && <Metric label="Fallback" value={investigation.fallback_reason || "none"} />}
+      {investigation && <Metric label="Degraded reasons" value={investigation.degraded_reasons?.join(", ") || "none"} />}
       {job.error && <Metric label="Error" value={job.error} />}
     </div>
   );
+}
+
+function formatCounts(value?: Record<string, number>): string {
+  if (!value || Object.keys(value).length === 0) return "0";
+  return Object.entries(value).map(([key, count]) => `${key}:${count}`).join(", ");
+}
+
+function formatBudget(value?: Record<string, unknown>): string {
+  if (!value) return "n/a";
+  const used = value.used && typeof value.used === "object" ? value.used as Record<string, unknown> : {};
+  const limits = value.limits && typeof value.limits === "object" ? value.limits as Record<string, unknown> : {};
+  const limitKeys: Record<string, string[]> = {
+    requests: ["request_budget", "requests"],
+    tokens: ["token_budget", "tokens"],
+    tool_calls: ["max_tool_calls", "max_tool_calls_per_hypothesis"],
+    hypotheses: ["max_hypotheses"]
+  };
+  return ["requests", "tokens", "tool_calls", "hypotheses"]
+    .filter((key) => key in used || limitKeys[key].some((limitKey) => limitKey in limits))
+    .map((key) => {
+      const limitKey = limitKeys[key].find((candidate) => candidate in limits);
+      return `${key}:${stringValue(used[key])}/${stringValue(limitKey ? limits[limitKey] : undefined)}`;
+    })
+    .join(", ") || "recorded";
 }
 
 function FindingsTab({ reportJson }: { reportJson?: AuditReport }) {

@@ -1,0 +1,31 @@
+{
+  "schema_version": "agent-led-real-model-stability.v1",
+  "repetitions": 3,
+  "targets": [
+    {
+      "id": "rzfeeser-sql-injection",
+      "source": "https://github.com/rzfeeser/sql_injection.git",
+      "commit": "24f4e6ae630cc7ff2e2326474dc35bf24480e5cf",
+      "local_path": ".benchmark-selection/rzfeeser-sql-injection"
+    },
+    {
+      "id": "secure-file-locker",
+      "source": "https://github.com/sh1vmani/secure-file-locker.git",
+      "commit": "b2dd76f1b5d68200722f62c4935cc8ed0c80a59e",
+      "local_path": ".benchmark-selection/secure-file-locker"
+    },
+    {
+      "id": "sql-injection-lab",
+      "source": "https://github.com/JimProKing/sql-injection-lab.git",
+      "commit": "4624b0743464a1975acab215d1ffdbf1a8b622ba",
+      "local_path": ".benchmark-selection/sql-injection-lab"
+    }
+  ],
+  "safety": {
+    "target_writes": false,
+    "target_network": false,
+    "project_execution": false,
+    "model_code_authority": false,
+    "provider_api": true
+  }
+}

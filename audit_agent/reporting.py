@@ -177,6 +177,27 @@ class ReportGenerator:
                     "",
                 ]
             )
+        investigation = report.runtime.get("investigation") if isinstance(report.runtime, dict) else None
+        if investigation:
+            hypotheses = investigation.get("hypothesis_counts") or {}
+            gates = investigation.get("evidence_gate_counts") or {}
+            checkpoint = investigation.get("checkpoint_summary") or {}
+            lines.extend(
+                [
+                    "## Agent-led Investigation",
+                    "",
+                    f"- Requested mode: {investigation.get('requested_mode', 'agent-led')}",
+                    f"- Effective mode: {investigation.get('effective_mode', 'unknown')}",
+                    f"- Hypotheses: {json.dumps(hypotheses, ensure_ascii=False, sort_keys=True)}",
+                    f"- Evidence gates: {json.dumps(gates, ensure_ascii=False, sort_keys=True)}",
+                    f"- Verification plans: {len(investigation.get('verification_plan_refs') or [])}",
+                    f"- Checkpoints: {checkpoint.get('count', 0)}",
+                    f"- Latest checkpoint: {checkpoint.get('latest_ref') or ''}",
+                    f"- Fallback reason: {investigation.get('fallback_reason') or 'none'}",
+                    f"- Degraded reasons: {', '.join(investigation.get('degraded_reasons') or []) or 'none'}",
+                    "",
+                ]
+            )
         graph = report.runtime.get("graph") if isinstance(report.runtime, dict) else None
         if isinstance(graph, dict):
             mutation_counts = graph.get("mutation_counts") or {}

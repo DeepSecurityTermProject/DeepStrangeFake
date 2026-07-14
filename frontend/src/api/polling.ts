@@ -8,5 +8,5 @@ export function runStatusRefetchInterval(job?: Pick<JobStatusResponse, "status">
 }
 
 export function isTerminalStatus(status?: string): boolean {
-  return status === "succeeded" || status === "failed";
+  return status === "succeeded" || status === "degraded" || status === "cancelled" || status === "failed";
 }

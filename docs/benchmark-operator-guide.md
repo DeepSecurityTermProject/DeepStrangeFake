@@ -116,3 +116,11 @@ Promotion validation recomputes reconciliation from the current run directory
 and runtime budget counters, then compares live totals and contributing refs
 with the stored summary. A previously complete but stale summary cannot mask
 later artifact deletion or corruption.
+
+The runtime enforces the token ceiling before each dispatch: it conservatively
+estimates prompt tokens, subtracts them from the remaining case budget, and
+clamps the provider completion `max_tokens` to the remainder. Inspect the
+`token_budget_plan` on the request-started lifecycle event when diagnosing a
+denial. A provider that disregards the transmitted limit is recorded at its
+actual usage and fails the hard-budget gate; the runtime never truncates
+accounting to make such a run promotion-eligible.

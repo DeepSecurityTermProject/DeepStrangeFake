@@ -72,6 +72,33 @@ class RetryingObservedClient:
 
 
 class LlmAuditAccountingTests(unittest.TestCase):
+    def test_known_provider_cost_budget_denies_post_response_and_future_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            req = request()
+            priced = response(req, tokens=7)
+            priced.usage["cost_usd"] = 0.75
+            state = {}
+            gateway = AuditedLLMGateway(
+                StaticClient(priced),
+                LifecycleLedger(Path(tmp), "run-known-cost"),
+                request_budget=3,
+                token_budget=100,
+                cost_budget_usd=0.5,
+                accounting_state=state,
+            )
+            with self.assertRaisesRegex(LLMBudgetExceeded, "known cost"):
+                gateway.invoke(req)
+            self.assertEqual(gateway.requests_used, 1)
+            self.assertEqual(gateway.tokens_used, 7)
+            self.assertEqual(gateway.cost_used_usd, 0.75)
+            self.assertEqual(state["cost_budget_usd"], 0.5)
+            with self.assertRaisesRegex(LLMBudgetExceeded, "known cost") as denied:
+                gateway.invoke(request("verification"))
+            self.assertEqual(denied.exception.receipt.provider_attempt_ids, [])
+            accounting = reconcile_llm_lifecycle(Path(tmp))
+            self.assertEqual(accounting.pre_dispatch_denials, 1)
+            self.assertEqual(accounting.terminal_status_counts, {"budget-denied": 2})
+
     def test_schema_invalid_response_is_persisted_and_counted_before_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             req = request()
@@ -172,7 +199,7 @@ class LlmAuditAccountingTests(unittest.TestCase):
             },
             "retry": {"client": RetryingObservedClient(), "requests": 1, "attempts": 2, "tokens": None},
             "pre-dispatch": {"client": StaticClient(), "requests": 0, "attempts": 0, "tokens": 0},
-            "post-response": {"client": StaticClient(), "requests": 1, "attempts": 1, "tokens": 7},
+            "pre-token-plan": {"client": StaticClient(), "requests": 0, "attempts": 0, "tokens": 0},
         }
         for name, expected in scenarios.items():
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
@@ -181,7 +208,7 @@ class LlmAuditAccountingTests(unittest.TestCase):
                     expected["client"],
                     LifecycleLedger(Path(tmp), f"run-{name}"),
                     request_budget=0 if name == "pre-dispatch" else 2,
-                    token_budget=3 if name == "post-response" else 100,
+                    token_budget=3 if name == "pre-token-plan" else 100,
                 )
                 try:
                     receipt = gateway.invoke(req)
@@ -195,6 +222,134 @@ class LlmAuditAccountingTests(unittest.TestCase):
                 self.assertEqual(accounting.provider_attempts, expected["attempts"])
                 self.assertEqual(accounting.llm_tokens, expected["tokens"])
                 self.assertEqual(accounting.retries, max(0, expected["attempts"] - expected["requests"]))
+
+    def test_remaining_token_budget_caps_requests_and_denies_before_dispatch(self):
+        class SequencedClient:
+            def __init__(self):
+                self.requests = []
+
+            def complete(self, req):
+                self.requests.append(req)
+                usage = (
+                    {"prompt_tokens": 20, "completion_tokens": 50, "total_tokens": 70}
+                    if len(self.requests) == 1
+                    else {"prompt_tokens": 23, "completion_tokens": 7, "total_tokens": 30}
+                )
+                return LLMResponse(
+                    request_id=req.id or "",
+                    provider="mock",
+                    model=req.model,
+                    text='{"result":"ok"}',
+                    parsed_json={"result": "ok"},
+                    usage=usage,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            client = SequencedClient()
+            state = {}
+            gateway = AuditedLLMGateway(
+                client,
+                LifecycleLedger(Path(tmp), "run-hard-token-cap"),
+                request_budget=5,
+                token_budget=100,
+                accounting_state=state,
+            )
+            first_request = LLMRequest(
+                role="first",
+                prompt="x",
+                model="fixture-model",
+                max_tokens=80,
+                id="request-hard-cap-first",
+            )
+            first = gateway.invoke(first_request)
+            first_started = json.loads(Path(first.event_refs[0]).read_text(encoding="utf-8"))
+            self.assertEqual(
+                {
+                    "estimator": "utf8-byte-upper-bound.v1",
+                    "token_budget": 100,
+                    "tokens_used_before_request": 0,
+                    "remaining_token_budget": 100,
+                    "prompt_token_estimate": 24,
+                    "configured_max_tokens": 80,
+                    "effective_max_tokens": 76,
+                    "dispatch_allowed": True,
+                },
+                first_started["details"]["token_budget_plan"],
+            )
+            gateway.record_schema(first, valid=True)
+            gateway.record_policy(first, accepted=True)
+            gateway.terminalize(first, "accepted")
+
+            second_request = LLMRequest(
+                role="next",
+                prompt="y",
+                model="fixture-model",
+                max_tokens=50,
+                id="request-hard-cap-second",
+            )
+            second = gateway.invoke(second_request)
+            gateway.record_schema(second, valid=True)
+            gateway.record_policy(second, accepted=True)
+            gateway.terminalize(second, "accepted")
+
+            with self.assertRaisesRegex(LLMBudgetExceeded, "token budget") as denied:
+                gateway.invoke(
+                    LLMRequest(
+                        role="third",
+                        prompt="z",
+                        model="fixture-model",
+                        max_tokens=50,
+                        id="request-hard-cap-third",
+                    )
+                )
+            accounting = reconcile_llm_lifecycle(
+                Path(tmp),
+                budget_counters=state,
+            )
+
+        self.assertEqual([76, 7], [item.max_tokens for item in client.requests])
+        self.assertEqual(100, gateway.tokens_used)
+        self.assertEqual(100, state["tokens_used"])
+        self.assertEqual([], denied.exception.receipt.provider_attempt_ids)
+        self.assertEqual(2, accounting.llm_requests)
+        self.assertEqual(2, accounting.provider_attempts)
+        self.assertEqual(1, accounting.pre_dispatch_denials)
+        self.assertEqual(100, accounting.llm_tokens)
+        self.assertTrue(accounting.complete, [item.to_dict() for item in accounting.gaps])
+
+    def test_provider_ignoring_max_tokens_is_persisted_and_denied_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            req = LLMRequest(
+                role="violation",
+                prompt="x",
+                model="fixture-model",
+                max_tokens=1000,
+                id="request-provider-token-violation",
+            )
+            oversized = LLMResponse(
+                request_id=req.id or "",
+                provider="mock",
+                model=req.model,
+                text='{"result":"oversized"}',
+                parsed_json={"result": "oversized"},
+                usage={"prompt_tokens": 20, "completion_tokens": 81, "total_tokens": 101},
+            )
+            gateway = AuditedLLMGateway(
+                StaticClient(oversized),
+                LifecycleLedger(Path(tmp), "run-provider-token-violation"),
+                request_budget=2,
+                token_budget=100,
+            )
+            with self.assertRaisesRegex(LLMBudgetExceeded, "exceeded token budget") as denied:
+                gateway.invoke(req)
+            receipt = denied.exception.receipt
+            accounting = reconcile_llm_lifecycle(Path(tmp))
+            self.assertTrue(Path(receipt.response_ref).is_file())
+            self.assertLess(receipt.request.max_tokens, req.max_tokens)
+            self.assertEqual(101, gateway.tokens_used)
+            self.assertEqual(101, accounting.llm_tokens)
+            self.assertEqual({"budget-denied": 1}, accounting.terminal_status_counts)
+            self.assertTrue(accounting.complete, [item.to_dict() for item in accounting.gaps])
 
     def test_lifecycle_round_trip_collision_corruption_and_missing_terminal_are_fail_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -374,6 +529,7 @@ class LlmAuditAccountingTests(unittest.TestCase):
                     LlmConfig(
                         provider="openai-compatible",
                         model="fixture-model",
+                        base_url="https://provider.invalid/v1",
                         api_key_env="AUDIT_ACCOUNTING_KEY",
                         retry_count=0,
                     )
@@ -382,7 +538,7 @@ class LlmAuditAccountingTests(unittest.TestCase):
                     client,
                     LifecycleLedger(Path(tmp), "run-format-fallback"),
                     request_budget=2,
-                    token_budget=100,
+                    token_budget=1_000,
                 )
                 req = request("format-fallback")
                 req.response_schema = {"type": "object"}
@@ -456,6 +612,75 @@ class LlmAuditAccountingTests(unittest.TestCase):
                 self.assertEqual(accounting.provider_attempts, 2)
                 self.assertEqual(accounting.retries, 1)
                 self.assertEqual(accounting.terminal_status_counts, {"provider-error": 1})
+
+    def test_deepseek_capability_uses_one_accounted_json_object_attempt(self):
+        request_bodies = []
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "model": "deepseek-fixture",
+                        "choices": [
+                            {
+                                "message": {"content": '{"result":"ok"}'},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+                    }
+                ).encode("utf-8")
+
+        def fake_urlopen(http_request, timeout):
+            request_bodies.append(json.loads(http_request.data.decode("utf-8")))
+            return Response()
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ, {"AUDIT_ACCOUNTING_KEY": "fixture-key"}
+        ):
+            state = {}
+            client = OpenAICompatibleClient(
+                LlmConfig(
+                    provider="openai-compatible",
+                    model="deepseek-fixture",
+                    base_url="https://api.deepseek.com",
+                    api_key_env="AUDIT_ACCOUNTING_KEY",
+                    retry_count=0,
+                )
+            )
+            gateway = AuditedLLMGateway(
+                client,
+                LifecycleLedger(Path(tmp), "run-deepseek-format"),
+                request_budget=2,
+                token_budget=1_000,
+                accounting_state=state,
+            )
+            req = request("deepseek-format")
+            req.provider = "openai-compatible"
+            req.model = "deepseek-fixture"
+            req.response_schema = {"type": "object"}
+            req.response_format = "auto"
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                receipt = gateway.invoke(req)
+            gateway.record_schema(receipt, valid=True)
+            gateway.record_policy(receipt, accepted=True)
+            gateway.terminalize(receipt, "accepted")
+
+            accounting = reconcile_llm_lifecycle(Path(tmp))
+
+        self.assertEqual(1, len(request_bodies))
+        self.assertEqual({"type": "json_object"}, request_bodies[0]["response_format"])
+        self.assertEqual(1, accounting.provider_attempts)
+        self.assertEqual(0, accounting.retries)
+        self.assertEqual(5, accounting.llm_tokens)
+        self.assertTrue(accounting.complete, [item.to_dict() for item in accounting.gaps])
+        self.assertEqual(["json_object"], list(state["response_format_capabilities"].values()))
 
     def test_offline_runtime_counts_schema_invalid_response_and_tamper_is_detected(self):
         from audit_agent.pipeline import run_audit
@@ -620,7 +845,7 @@ class LlmAuditAccountingTests(unittest.TestCase):
                     StaticClient(response(req, tokens=25)),
                     LifecycleLedger(root, f"run-{expected_reason}"),
                     request_budget=2,
-                    token_budget=100,
+                    token_budget=1_000,
                 )
                 receipt = gateway.invoke(req)
                 gateway.record_schema(receipt, valid=True)

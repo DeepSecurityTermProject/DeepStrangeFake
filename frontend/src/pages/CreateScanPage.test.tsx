@@ -32,7 +32,7 @@ describe("CreateScanPage", () => {
     vi.mocked(apiClient.getOptions).mockResolvedValue({
       provider_modes: ["mock", "openai-compatible"],
       graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
-      default_graph_mode: "deterministic-graph",
+      default_graph_mode: "agent-led",
       memory_modes: ["lexical", "embedding", "off"],
       mcp_modes: ["on", "degraded", "off"],
       validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
@@ -83,7 +83,7 @@ describe("CreateScanPage", () => {
     expect(payload).toMatchObject({
       target: "fixtures/integration_smoke",
       runtime: true,
-      graph_mode: "deterministic-graph",
+      graph_mode: "agent-led",
       llm_provider: "mock",
       llm_decisions: true,
       memory_mode: "lexical",
@@ -158,7 +158,7 @@ describe("CreateScanPage", () => {
     vi.mocked(apiClient.getOptions).mockResolvedValue({
       provider_modes: ["mock", "openai-compatible"],
       graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
-      default_graph_mode: "deterministic-graph",
+      default_graph_mode: "agent-led",
       memory_modes: ["lexical", "embedding", "off"],
       mcp_modes: ["on", "degraded", "off"],
       validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
@@ -191,7 +191,7 @@ describe("CreateScanPage", () => {
     vi.mocked(apiClient.getOptions).mockResolvedValue({
       provider_modes: ["mock", "openai-compatible"],
       graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
-      default_graph_mode: "deterministic-graph",
+      default_graph_mode: "agent-led",
       memory_modes: ["lexical", "embedding", "off"],
       mcp_modes: ["on", "degraded", "off"],
       validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],
@@ -231,7 +231,7 @@ describe("CreateScanPage", () => {
     vi.mocked(apiClient.getOptions).mockResolvedValue({
       provider_modes: ["mock", "openai-compatible"],
       graph_modes: ["legacy", "deterministic-graph", "adaptive-graph"],
-      default_graph_mode: "deterministic-graph",
+      default_graph_mode: "agent-led",
       memory_modes: ["lexical", "embedding", "off"],
       mcp_modes: ["on", "degraded", "off"],
       validation_levels: ["static-only", "poc-generate", "sandbox", "manual"],

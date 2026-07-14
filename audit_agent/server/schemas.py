@@ -9,7 +9,7 @@ MemoryMode = Literal["lexical", "embedding", "off"]
 McpMode = Literal["on", "off", "degraded"]
 ValidationLevel = Literal["static-only", "poc-generate", "sandbox", "manual"]
 SandboxRunner = Literal["local", "docker"]
-GraphMode = Literal["legacy", "deterministic-graph", "adaptive-graph"]
+GraphMode = Literal["agent-led", "legacy", "deterministic-graph", "adaptive-graph"]
 
 
 class StrictModel(BaseModel):
@@ -59,6 +59,7 @@ class ScanRunRequest(StrictModel):
     include_patterns: list[str] | None = None
     exclude_patterns: list[str] | None = None
     output: str | None = None
+    resume_run_id: str | None = None
 
     @model_validator(mode="after")
     def normalize_source(self):

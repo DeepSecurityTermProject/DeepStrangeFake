@@ -51,6 +51,8 @@ export const apiClient = {
     }),
   listRuns: () => requestJson<JobListResponse>("/api/runs"),
   getRun: (jobId: string) => requestJson<JobStatusResponse>(`/api/runs/${encodeURIComponent(jobId)}`),
+  cancelRun: (jobId: string) =>
+    requestJson<JobStatusResponse>(`/api/runs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }),
   getRuntimeState: (jobId: string) =>
     requestJson<RuntimeState>(`/api/runs/${encodeURIComponent(jobId)}/runtime-state`),
   getReplaySummary: (jobId: string) =>

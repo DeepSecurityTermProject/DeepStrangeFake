@@ -178,10 +178,10 @@ The UI supports:
 
 - creating scan runs with target, runtime, provider, LLM decisions, memory, MCP,
   validation, Docker sandbox, and bounded LLM PoC repair controls;
-- browsing queued, running, succeeded, and failed jobs;
+- browsing queued, running, succeeded, degraded, cancelled, and failed jobs;
 - opening run details with Summary, Findings, Runtime Tasks, Replay, and
   Markdown Report tabs;
-- polling run status until `succeeded` or `failed`, then loading runtime,
+- polling run status until a terminal status, then loading runtime,
   replay, and report artifacts.
 
 Run frontend verification:
@@ -290,12 +290,26 @@ operations are:
 - `replace_slot` in a generator-declared target-setup slot.
 
 The repair prompt includes a minimal legal JSON example and the complete nested
-schema for edit items and `changes` string items. OpenAI-compatible clients
-request strict `response_format.json_schema` first. If an otherwise reachable
-endpoint rejects JSON Schema mode with HTTP 400, the client retries once with
-`response_format.type = json_object`. The exact parser remains authoritative in
-both modes: it will not translate `operation` to `op`, split a full import
+schema for edit items and `changes` string items. OpenAI-compatible clients use
+the configured or known structured-output capability first: DeepSeek-compatible
+endpoints use `response_format.type = json_object`, while OpenAI endpoints use
+strict `response_format.json_schema`. For an unknown endpoint, `auto` probes
+JSON Schema once and caches an HTTP 400 capability rejection for the rest of the
+run and checkpoint resume before using JSON Object. Set
+`AUDIT_AGENT_LLM_RESPONSE_FORMAT=json_schema` or `json_object` to override
+automatic selection. The exact parser remains authoritative in both modes: it
+will not translate `operation` to `op`, split a full import
 `value` into `module`/`name`, or coerce a string `changes` value into an array.
+
+Every audited LLM request is also bounded before network dispatch. The gateway
+uses a conservative UTF-8 prompt estimate that includes the role, prompt,
+response schema, and chat-framing allowance, subtracts it from the remaining
+run token budget, and lowers the outgoing completion `max_tokens` when needed.
+If no positive completion allowance remains, the request is denied without a
+provider attempt. The lifecycle event records the estimator and both configured
+and effective limits. Provider-reported usage remains authoritative; if a
+provider ignores the transmitted limit, the response and actual overage are
+retained and the request fails closed.
 
 The model cannot return a complete script, command, expected signal, result
 filename, sandbox policy, retry count, or verdict. Trusted code applies edits
@@ -574,11 +588,12 @@ cross-file dataflow remain follow-up engine work.
 
 ## Graph Runtime
 
-`deterministic-graph` is the default. Use `--graph-mode legacy` for rollback or `--graph-mode adaptive-graph` for guarded checkpoints. Graph artifacts are under the run's `graphs/` directory. Report JSON/Markdown and the Web run detail expose additive graph mode, revision, mutation/checkpoint counts, actual path, fallback reason, and artifact refs; older payloads without these fields remain readable.
+`agent-led` is the default. It gathers evidence through registered actions and cannot bypass trusted promotion, compilation, sandbox, or Judge controls. Use `--graph-mode deterministic-graph`, `--graph-mode legacy`, or `--graph-mode adaptive-graph` for explicit compatibility and rollback. When no usable real provider exists, the requested agent-led run completes through deterministic fallback with terminal `degraded` status and exposes requested/effective modes. Agent-led artifacts are under `signals/`, `investigations/`, `evidence-gates/`, and `verification-plans/`; graph-mode artifacts remain under `graphs/`. Older payloads without the additive fields remain readable.
 
 Adaptive execution is sequential, not parallel. A strict decision may only select a registered future-node action. Replan, checkpoint, node, token, tool, and sandbox budgets remain mandatory. Any malformed, unavailable, denied, invalid, over-budget, or unpersisted proposal falls back to the last committed graph.
 
 ```powershell
+audit-agent scan --target fixtures/integration_smoke
 audit-agent scan --target fixtures/integration_smoke --graph-mode deterministic-graph
 audit-agent scan --target fixtures/integration_smoke --graph-mode adaptive-graph --runtime --llm-decisions --llm-decision-roles orchestrator --llm-provider mock
 audit-agent scan --target fixtures/integration_smoke --graph-mode legacy

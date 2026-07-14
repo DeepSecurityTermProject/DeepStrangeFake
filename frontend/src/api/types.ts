@@ -1,9 +1,9 @@
-export type JobStatus = "queued" | "running" | "succeeded" | "failed";
+export type JobStatus = "queued" | "running" | "succeeded" | "degraded" | "cancelled" | "failed";
 export type MemoryMode = "lexical" | "embedding" | "off";
 export type McpMode = "on" | "degraded" | "off";
 export type ValidationLevel = "static-only" | "poc-generate" | "sandbox" | "manual";
 export type SandboxRunner = "local" | "docker";
-export type GraphMode = "legacy" | "deterministic-graph" | "adaptive-graph";
+export type GraphMode = "agent-led" | "legacy" | "deterministic-graph" | "adaptive-graph";
 export type SourceSpec =
   | { kind: "local"; path: string }
   | { kind: "github"; url: string; commit?: string }
@@ -31,6 +31,7 @@ export interface ScanRunRequest {
   include_patterns?: string[];
   exclude_patterns?: string[];
   output?: string;
+  resume_run_id?: string;
 }
 
 export interface CreateRunResponse {
@@ -155,9 +156,22 @@ export interface AuditReport {
   verification_candidates?: ReportFinding[];
   runtime?: {
     graph?: GraphSummary;
+    investigation?: InvestigationSummary;
     [key: string]: unknown;
   };
   [key: string]: unknown;
+}
+
+export interface InvestigationSummary {
+  requested_mode?: string;
+  effective_mode?: string;
+  fallback_reason?: string;
+  degraded_reasons?: string[];
+  hypothesis_counts?: Record<string, number>;
+  evidence_gate_counts?: Record<string, number>;
+  verification_plan_refs?: string[];
+  investigation_budget?: Record<string, unknown>;
+  checkpoint_summary?: Record<string, unknown>;
 }
 
 export interface GraphSummary {

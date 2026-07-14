@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, RefreshCw, XCircle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { isTerminalStatus, runStatusRefetchInterval } from "../api/polling";
@@ -9,6 +9,7 @@ import { RunDetailTabs } from "./RunDetailTabs";
 
 export function RunDetailPage() {
   const { jobId = "" } = useParams();
+  const queryClient = useQueryClient();
   const runQuery = useQuery({
     queryKey: ["run", jobId],
     queryFn: () => apiClient.getRun(jobId),
@@ -18,6 +19,10 @@ export function RunDetailPage() {
 
   const job = runQuery.data;
   const terminal = isTerminalStatus(job?.status);
+  const cancelMutation = useMutation({
+    mutationFn: () => apiClient.cancelRun(jobId),
+    onSuccess: (cancelled) => queryClient.setQueryData(["run", jobId], cancelled)
+  });
 
   const runtimeQuery = useQuery({
     queryKey: ["runtime-state", jobId],
@@ -58,9 +63,16 @@ export function RunDetailPage() {
           <h1>{job.job_id}</h1>
           <p>{terminal ? "Artifacts loaded after terminal status" : "Polling until completion"}</p>
         </div>
-        <button className="icon-action" type="button" onClick={() => runQuery.refetch()} aria-label="Refresh run">
-          <RefreshCw size={18} aria-hidden="true" />
-        </button>
+        <div className="page-actions">
+          {!terminal && (
+            <button className="icon-action" type="button" onClick={() => cancelMutation.mutate()} aria-label="Cancel run" disabled={cancelMutation.isPending}>
+              <XCircle size={18} aria-hidden="true" />
+            </button>
+          )}
+          <button className="icon-action" type="button" onClick={() => runQuery.refetch()} aria-label="Refresh run">
+            <RefreshCw size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
       <RunDetailTabs
         job={job}

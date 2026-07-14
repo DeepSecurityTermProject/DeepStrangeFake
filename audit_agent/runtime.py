@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -42,12 +43,13 @@ from .graph_templates import (
     build_deterministic_audit_graph,
 )
 from .intelligence import CveMcpAdapter
+from .investigation_models import InvestigationSummary
 from .llm import build_llm_client, persist_llm_artifact, validate_json_schema
 from .llm_accounting import AuditedLLMGateway, LifecycleLedger, reconcile_llm_lifecycle
 from .mcp_client import CveMcpClient  # Compatibility import for existing runtime patch points.
 from .memory import LexicalMemoryStore, MemoryIndexer, persist_retrievals
 from .message_bus import MessageBus
-from .models import LLMRequest, ToolCallResult, stable_id, to_plain, utc_now
+from .models import LLMRequest, PromptRenderRecord, ToolCallResult, stable_id, to_plain, utc_now
 from .prompts import persist_prompt, render_default_prompt
 from .redaction import redact_secrets, redact_text
 from .reporting import ReportGenerator
@@ -60,8 +62,60 @@ from .tools import PatternScanner
 from .verification import VerificationEngine, VerificationStatus, verification_status_counts
 
 
-TERMINAL_RUN_STATUSES = {"succeeded", "failed", "cancelled"}
+TERMINAL_RUN_STATUSES = {"succeeded", "degraded", "failed", "cancelled"}
 TERMINAL_TASK_STATUSES = {"succeeded", "failed", "skipped", "fallback"}
+
+
+class CancellationToken:
+    def __init__(self) -> None:
+        self._event = threading.Event()
+        self._lock = threading.Lock()
+        self._callbacks: dict[int, Callable[[], None]] = {}
+        self._next_callback = 0
+
+    def cancel(self) -> None:
+        callbacks: list[Callable[[], None]] = []
+        with self._lock:
+            if self._event.is_set():
+                return
+            self._event.set()
+            callbacks = list(self._callbacks.values())
+            self._callbacks.clear()
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception:
+                continue
+
+    @property
+    def cancelled(self) -> bool:
+        return self._event.is_set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return self._event.wait(timeout)
+
+    def register(self, callback: Callable[[], None]) -> Callable[[], None]:
+        with self._lock:
+            if self._event.is_set():
+                invoke_now = True
+                callback_id = -1
+            else:
+                invoke_now = False
+                self._next_callback += 1
+                callback_id = self._next_callback
+                self._callbacks[callback_id] = callback
+        if invoke_now:
+            callback()
+
+        def unregister() -> None:
+            with self._lock:
+                self._callbacks.pop(callback_id, None)
+
+        return unregister
+
+
+class AuditCancelled(RuntimeError):
+    pass
 
 
 @dataclass
@@ -181,6 +235,15 @@ class RunState:
     execution_path: list[str] = field(default_factory=list)
     graph_fallback_reason: str = ""
     llm_accounting: dict[str, Any] = field(default_factory=dict)
+    requested_mode: str = "legacy"
+    effective_mode: str = "legacy"
+    fallback_reason: str = ""
+    degraded_reasons: list[str] = field(default_factory=list)
+    hypothesis_counts: dict[str, int] = field(default_factory=dict)
+    evidence_gate_counts: dict[str, int] = field(default_factory=dict)
+    verification_plan_refs: list[str] = field(default_factory=list)
+    investigation_budget: dict[str, Any] = field(default_factory=dict)
+    checkpoint_summary: dict[str, Any] = field(default_factory=dict)
 
     def mark_running(self, message_ref: str | None = None) -> None:
         self.status = "running"
@@ -196,6 +259,30 @@ class RunState:
     def mark_failed(self, error: str, summary: dict[str, Any] | None = None, message_ref: str | None = None) -> None:
         self.status = "failed"
         self.error = error
+        self.finished_at = utc_now()
+        self.final_summary = summary or {}
+        self.record_message(message_ref)
+
+    def mark_degraded(
+        self,
+        summary: dict[str, Any] | None = None,
+        reasons: list[str] | None = None,
+        message_ref: str | None = None,
+    ) -> None:
+        self.status = "degraded"
+        self.finished_at = utc_now()
+        self.final_summary = summary or {}
+        for reason in reasons or []:
+            if reason and reason not in self.degraded_reasons:
+                self.degraded_reasons.append(reason)
+        self.record_message(message_ref)
+
+    def mark_cancelled(
+        self,
+        summary: dict[str, Any] | None = None,
+        message_ref: str | None = None,
+    ) -> None:
+        self.status = "cancelled"
         self.finished_at = utc_now()
         self.final_summary = summary or {}
         self.record_message(message_ref)
@@ -553,6 +640,37 @@ def _run_dependency_intelligence(
     return service.scan(metadata.dependencies)
 
 
+def _patch_agent_led_fallback_artifacts(run_dir: Path, summary: dict[str, Any]) -> None:
+    """Add agent-led fallback metadata without removing prior graph fields."""
+    investigation = InvestigationSummary(
+        requested_mode="agent-led",
+        effective_mode="deterministic-graph",
+        fallback_reason=str(summary.get("fallback_reason") or ""),
+        degraded_reasons=list(summary.get("degraded_reasons") or []),
+        investigation_budget={},
+        checkpoint_summary={"count": 0, "latest_ref": None},
+    ).to_dict()
+    report_path = run_dir / "reports" / "report.json"
+    if report_path.is_file():
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        runtime = dict(payload.get("runtime") or {})
+        runtime.update({"status": "degraded", "investigation": investigation})
+        payload["runtime"] = runtime
+        payload["run_status"] = "degraded"
+        temporary = report_path.with_name(f".{report_path.name}.tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(report_path)
+    resource_ref = summary.get("resource_summary_ref")
+    if resource_ref and Path(resource_ref).is_file():
+        resource_path = Path(resource_ref)
+        payload = json.loads(resource_path.read_text(encoding="utf-8"))
+        payload["terminal_status"] = "degraded"
+        payload["investigation"] = investigation
+        temporary = resource_path.with_name(f".{resource_path.name}.tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(resource_path)
+
+
 class AgentRuntime:
     def __init__(
         self,
@@ -560,11 +678,15 @@ class AgentRuntime:
         output_dir: str | Path = "runs",
         registry: AgentRegistry | None = None,
         progress_callback=None,
+        cancellation_token: CancellationToken | None = None,
+        resume_run_id: str | None = None,
     ):
         self.config = config or AuditConfig.default()
         self.output_dir = output_dir
         self.registry = registry or default_agent_registry(self.config)
         self.progress_callback = progress_callback
+        self.cancellation_token = cancellation_token or CancellationToken()
+        self.resume_run_id = resume_run_id
         self.run: RunContext | None = None
         self.run_state: RunState | None = None
         self.artifacts: ArtifactStore | None = None
@@ -583,6 +705,9 @@ class AgentRuntime:
             "llm_lifecycle_refs": [],
         }
 
+    def cancel(self) -> None:
+        self.cancellation_token.cancel()
+
     def _emit_phase(self, phase: str) -> None:
         if self.progress_callback:
             self.progress_callback(phase)
@@ -590,9 +715,49 @@ class AgentRuntime:
     def run_audit(
         self, target: str, prepared_target: PreparedAuditTarget | None = None
     ) -> dict[str, Any]:
+        if self.config.graph.mode == "agent-led":
+            return self._run_agent_led_audit(target, prepared_target)
         if self.config.graph.mode != "legacy":
             return self._run_graph_audit(target, prepared_target)
         return self._run_legacy_audit(target, prepared_target)
+
+    def _run_agent_led_audit(
+        self, target: str, prepared_target: PreparedAuditTarget | None = None
+    ) -> dict[str, Any]:
+        from .agent_led_runtime import AgentLedInvestigationCoordinator, provider_is_usable
+
+        if not provider_is_usable(self.config):
+            requested_mode = self.config.graph.mode
+            requested_runtime = self.config.runtime_enabled
+            requested_decisions = self.config.llm_decisions.enabled
+            self.config.graph.mode = "deterministic-graph"
+            self.config.runtime_enabled = False
+            self.config.llm_decisions.enabled = False
+            try:
+                summary = self._run_graph_audit(target, prepared_target)
+            finally:
+                self.config.graph.mode = requested_mode
+                self.config.runtime_enabled = requested_runtime
+                self.config.llm_decisions.enabled = requested_decisions
+            reason = "agent-led-provider-unavailable-or-mock-not-authorized"
+            summary.update(
+                {
+                    "status": "degraded",
+                    "requested_mode": "agent-led",
+                    "effective_mode": "deterministic-graph",
+                    "fallback_reason": reason,
+                    "degraded_reasons": [reason],
+                }
+            )
+            if self.run_state and self.artifacts:
+                self.run_state.requested_mode = "agent-led"
+                self.run_state.effective_mode = "deterministic-graph"
+                self.run_state.fallback_reason = reason
+                self.run_state.mark_degraded(summary, [reason])
+                self.artifacts.persist_state()
+                _patch_agent_led_fallback_artifacts(self.run.path, summary)
+            return summary
+        return AgentLedInvestigationCoordinator(self, target, prepared_target).run()
 
     def _run_graph_audit(
         self, target: str, prepared_target: PreparedAuditTarget | None = None
@@ -1194,7 +1359,12 @@ class AgentRuntime:
         return task
 
     def _finish_task(self, task: TaskState, output_refs: list[str] | None = None) -> None:
-        task.mark_succeeded(output_refs=output_refs or [])
+        if task.status == "running":
+            task.mark_succeeded(output_refs=output_refs or [])
+        else:
+            for ref in output_refs or []:
+                task._append_unique(task.output_refs, ref)
+            task.finished_at = task.finished_at or utc_now()
         if self.bus:
             msg = self.bus.publish("runtime", task.role, "runtime.task", {"task_id": task.id, "role": task.role, "kind": task.kind, "status": task.status, "fallback_reason": task.fallback_reason})
             self._record_message(msg.message_id, task)
@@ -1229,50 +1399,107 @@ class AgentRuntime:
         variables: dict[str, Any],
     ):
         prompt = render_default_prompt(role, template_id, variables, self.config.prompts)
-        prompt_path = self.artifacts.write_prompt(prompt, task)
-        self.runtime_refs["prompt_refs"].append(prompt.id or "")
-        request = LLMRequest(
-            role=role,
-            prompt=prompt.rendered,
-            model=self.config.llm.model,
-            provider=self.config.llm.provider,
-            response_schema=prompt.output_schema,
+        repair_limit = (
+            int(self.config.llm_decisions.max_repair_attempts)
+            if template_id in {"analysis.investigation", "verification.plan"}
+            and self.config.llm_decisions.repair_enabled
+            else 0
         )
-        receipt = None
-        if isinstance(llm_client, AuditedLLMGateway):
-            receipt = llm_client.invoke(request, prompt_ref=prompt_path)
-            response = receipt.response
-            llm_path = receipt.response_ref or ""
-        else:
-            response = llm_client.complete(request)
-            llm_path = self.artifacts.write_llm(request, response, task)
-        try:
-            validate_json_schema(response.parsed_json, prompt.output_schema)
-            if receipt:
-                llm_client.record_schema(receipt, valid=True)
-        except Exception as exc:
-            if receipt:
-                llm_client.record_schema(receipt, valid=False, errors=[str(exc)])
+        for repair_attempt in range(repair_limit + 1):
+            prompt_path = self.artifacts.write_prompt(prompt, task)
+            self.runtime_refs["prompt_refs"].append(prompt.id or "")
+            request = LLMRequest(
+                role=role,
+                prompt=prompt.rendered,
+                model=self.config.llm.model,
+                provider=self.config.llm.provider,
+                response_schema=prompt.output_schema,
+                response_format="auto",
+                metadata={
+                    "template_id": template_id,
+                    "template_version": prompt.version,
+                    "schema_repair_attempt": repair_attempt,
+                },
+            )
+            receipt = None
+            if isinstance(llm_client, AuditedLLMGateway):
+                receipt = llm_client.invoke(request, prompt_ref=prompt_path)
+                response = receipt.response
+                llm_path = receipt.response_ref or ""
+            else:
+                response = llm_client.complete(request)
+                llm_path = self.artifacts.write_llm(request, response, task)
+            schema_error = None
+            try:
+                validate_json_schema(response.parsed_json, prompt.output_schema)
+                if receipt:
+                    llm_client.record_schema(receipt, valid=True)
+            except Exception as exc:
+                schema_error = exc
+                if receipt:
+                    llm_client.record_schema(receipt, valid=False, errors=[str(exc)])
+                response.validation_errors.append(str(exc))
+
+            self.runtime_refs["llm_response_refs"].append(response.id or "")
+            if self.bus:
+                msg = self.bus.publish(
+                    role,
+                    "llm",
+                    "llm.response",
+                    {
+                        "role": role,
+                        "response_id": response.id,
+                        "task_id": task.id,
+                        "schema_repair_attempt": repair_attempt,
+                    },
+                    artifact_refs=[prompt_path, llm_path],
+                )
+                self._record_message(msg.message_id, task)
+
+            if schema_error is None:
+                if receipt and not self._decision_enabled(role):
+                    llm_client.terminalize(receipt, "accepted")
+                return response, prompt_path, llm_path
+
             if not self._decision_enabled(role):
                 if receipt:
                     llm_client.record_fallback(receipt, "schema-invalid")
                     llm_client.terminalize(receipt, "fallback")
-                raise
-            response.validation_errors.append(str(exc))
-            task.mark_fallback("schema-invalid")
-        if receipt and not self._decision_enabled(role):
-            llm_client.terminalize(receipt, "accepted")
-        self.runtime_refs["llm_response_refs"].append(response.id or "")
-        if self.bus:
-            msg = self.bus.publish(
-                role,
-                "llm",
-                "llm.response",
-                {"role": role, "response_id": response.id, "task_id": task.id},
-                artifact_refs=[prompt_path, llm_path],
+                raise schema_error
+
+            if repair_attempt >= repair_limit:
+                task.mark_fallback("schema-invalid")
+                return response, prompt_path, llm_path
+
+            if receipt:
+                llm_client.record_fallback(receipt, "schema-repair")
+                llm_client.terminalize(receipt, "fallback")
+            invalid_payload = (
+                response.parsed_json if response.parsed_json is not None else response.text
             )
-            self._record_message(msg.message_id, task)
-        return response, prompt_path, llm_path
+            prompt = PromptRenderRecord(
+                template_id=f"{template_id}.schema-repair",
+                version=prompt.version,
+                role=role,
+                variables={
+                    "repair_attempt": repair_attempt + 1,
+                    "invalid_response_id": response.id,
+                    "validation_error": str(schema_error),
+                },
+                rendered=(
+                    "Repair the following JSON response so it exactly satisfies the supplied schema.\n"
+                    "Preserve valid data, include every required field (including rationale), and return "
+                    "only the corrected JSON object. Do not add code, commands, paths, tools, verdicts, "
+                    "or any authority not already allowed by the schema.\n"
+                    f"Validation error:\n{schema_error}\n"
+                    f"Invalid response:\n{json.dumps(invalid_payload, ensure_ascii=False)}\n"
+                    f"Required JSON Schema:\n{json.dumps(prompt.output_schema, ensure_ascii=False)}"
+                ),
+                output_schema=prompt.output_schema,
+                safety_constraints=list(prompt.safety_constraints),
+            )
+
+        raise RuntimeError("unreachable schema-repair loop")
 
     def _build_audited_llm_client(self) -> AuditedLLMGateway:
         if not self.run or not self.run_state or not self.artifacts:
@@ -1318,8 +1545,10 @@ class AgentRuntime:
                 else 1_000_000_000
             ),
             token_budget=self.config.llm.token_budget,
+            cost_budget_usd=self.config.llm.cost_budget_usd,
             response_writer=response_writer,
             accounting_state=self.run_state.llm_accounting,
+            cancellation_token=self.cancellation_token,
         )
         return self.llm_gateway
 

@@ -49,7 +49,7 @@ def create_app(
     def options():
         return {
             "provider_modes": ["mock", "openai-compatible"],
-            "graph_modes": ["legacy", "deterministic-graph", "adaptive-graph"],
+            "graph_modes": ["agent-led", "legacy", "deterministic-graph", "adaptive-graph"],
             "default_graph_mode": selected_config.graph.mode,
             "memory_modes": ["lexical", "embedding", "off"],
             "mcp_modes": ["on", "degraded", "off"],
@@ -124,6 +124,13 @@ def create_app(
     @app.get("/api/runs/{job_id}", response_model=JobStatusResponse)
     def get_run(job_id: str):
         return _job_payload(_get_job_or_404(store, job_id))
+
+    @app.post("/api/runs/{job_id}/cancel", response_model=JobStatusResponse)
+    def cancel_run(job_id: str):
+        _get_job_or_404(store, job_id)
+        if not hasattr(scan_runner, "cancel"):
+            raise HTTPException(status_code=409, detail={"error": "runner-cancellation-unavailable"})
+        return _job_payload(scan_runner.cancel(job_id))
 
     @app.get("/api/runs/{job_id}/runtime-state")
     def get_runtime_state(job_id: str):

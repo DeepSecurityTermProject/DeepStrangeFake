@@ -15,6 +15,7 @@ class AgentRuntimeIntegrationTests(unittest.TestCase):
             project = create_vulnerable_fixture(Path(tmp))
             output = Path(tmp) / "runs"
             config = AuditConfig.default()
+            config.graph.mode = "legacy"
             config.runtime_enabled = True
             config.llm.provider = "mock"
             config.memory.enabled = True

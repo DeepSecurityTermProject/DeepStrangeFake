@@ -81,6 +81,25 @@ GRAPH_DECISION_ACTIONS = [
     "skip-optional",
 ]
 
+INVESTIGATION_VULNERABILITY_CLASSES = [
+    "sql-injection",
+    "command-injection",
+    "path-traversal",
+    "hardcoded-secret",
+]
+
+INVESTIGATION_ACTION_IDS = [
+    "search",
+    "source_context",
+    "callers",
+    "callees",
+    "dataflow",
+    "sast",
+    "lexical_memory",
+    "submit_gate",
+    "abandon",
+]
+
 GRAPH_DECISION_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -93,6 +112,112 @@ GRAPH_DECISION_RESPONSE_SCHEMA: dict[str, Any] = {
             "items": {"type": "string", "enum": GRAPH_DECISION_ACTIONS},
         },
         "rationale": {"type": "string", "maxLength": 1000},
+    },
+}
+
+
+INVESTIGATION_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["hypotheses", "rationale"],
+    "properties": {
+        "hypotheses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "vulnerability_class",
+                    "claim",
+                    "target_paths",
+                    "confidence",
+                    "rationale",
+                    "signal_refs",
+                ],
+                "properties": {
+                    "vulnerability_class": {
+                        "type": "string",
+                        "enum": INVESTIGATION_VULNERABILITY_CLASSES,
+                    },
+                    "claim": {"type": "string", "minLength": 1},
+                    "target_paths": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "rationale": {"type": "string", "minLength": 1},
+                    "signal_refs": {"type": "array", "items": {"type": "string"}},
+                    "next_action": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["action", "arguments"],
+                        "properties": {
+                            "action": {"type": "string", "enum": INVESTIGATION_ACTION_IDS},
+                            "arguments": {"type": "object"},
+                        },
+                    },
+                },
+            },
+        },
+        "updates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["hypothesis_id", "assessment", "next_action", "evidence_refs"],
+                "properties": {
+                    "hypothesis_id": {"type": "string", "minLength": 1},
+                    "assessment": {
+                        "type": "string",
+                        "enum": ["investigating", "supported", "refuted", "inconclusive"],
+                    },
+                    "next_action": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["action", "arguments"],
+                        "properties": {
+                            "action": {"type": "string", "enum": INVESTIGATION_ACTION_IDS},
+                            "arguments": {"type": "object"},
+                        },
+                    },
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+        "rationale": {"type": "string", "minLength": 1},
+    },
+}
+
+
+VERIFICATION_PLAN_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["confidence", "rationale", "primitives"],
+    "properties": {
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "rationale": {"type": "string"},
+        "primitives": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "primitive_id",
+                    "parameters",
+                    "expected_observations",
+                    "evidence_refs",
+                ],
+                "properties": {
+                    "primitive_id": {"type": "string"},
+                    "parameters": {"type": "object"},
+                    "expected_observations": {"type": "array", "items": {"type": "string"}},
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
     },
 }
 
@@ -325,6 +450,44 @@ def _builtin_templates() -> list[PromptTemplate]:
             ),
         ),
         PromptTemplate(
+            template_id="analysis.investigation",
+            version="v1",
+            role="analysis",
+            required_variables=[
+                "repository_summary",
+                "bootstrap_source_context",
+                "security_signals",
+                "hypothesis_state",
+                "tool_observations",
+                "remaining_budgets",
+                "allowed_actions",
+            ],
+            output_schema=INVESTIGATION_RESPONSE_SCHEMA,
+            safety_constraints=common_safety
+            + [
+                "Propose hypotheses, never candidate or confirmed findings.",
+                "Choose only a registered action and typed arguments supplied by the runtime.",
+                "Do not emit code, shell, argv, executable paths, URLs, Docker settings, or verdicts.",
+                "Every target path must be present in RepositoryMetadata.file_tree.",
+            ],
+            body=(
+                "You are the bounded Analysis investigation agent.\n"
+                "Repository metadata and in-scope file tree:\n{{repository_summary}}\n"
+                "Bounded bootstrap source excerpts selected without vulnerability labels:\n{{bootstrap_source_context}}\n"
+                "Weak startup signals (not findings):\n{{security_signals}}\n"
+                "Current hypothesis state:\n{{hypothesis_state}}\n"
+                "Trusted tool observations:\n{{tool_observations}}\n"
+                "Remaining budgets:\n{{remaining_budgets}}\n"
+                "Allowed actions and argument contracts:\n{{allowed_actions}}\n"
+                "Safety constraints:\n{{safety_constraints}}\n"
+                "Return strict JSON with new hypotheses and optional updates. A new hypothesis may include "
+                "next_action to request its first registered evidence action without an existing hypothesis_id. "
+                "Updates are only for hypothesis IDs already shown in Current hypothesis state. An update assessment is one of "
+                "investigating, supported, refuted, or inconclusive. next_action.action is one registered action. "
+                "Do not include candidates, findings, source code, commands, or verdicts."
+            ),
+        ),
+        PromptTemplate(
             template_id="verification.decision",
             version="v1",
             role="verification",
@@ -349,6 +512,25 @@ def _builtin_templates() -> list[PromptTemplate]:
                 "You are the Verification agent.\nCandidates:\n{{candidate_json}}\n"
                 "Evidence:\n{{evidence_summary}}\nSafety:\n{{safety_constraints}}\n"
                 "Return JSON with decisions plus role, action, confidence, rationale, evidence_refs, selected_actions, and requested_tools."
+            ),
+        ),
+        PromptTemplate(
+            template_id="verification.plan",
+            version="v1",
+            role="verification",
+            required_variables=["evidence_package", "registered_primitives"],
+            output_schema=VERIFICATION_PLAN_RESPONSE_SCHEMA,
+            safety_constraints=[
+                "Use only the normative evidence package; Analysis hidden reasoning is unavailable.",
+                "Select exactly one registered primitive ID with typed parameters.",
+                "Do not emit code, script, shell, argv, URLs, environment, Docker settings, or verdicts.",
+            ],
+            body=(
+                "You are the bounded Verification planning agent.\n"
+                "Normative evidence package:\n{{evidence_package}}\n"
+                "Registered primitives and parameter contracts:\n{{registered_primitives}}\n"
+                "Safety constraints:\n{{safety_constraints}}\n"
+                "Return strict JSON containing confidence, rationale, and exactly one primitive only."
             ),
         ),
         PromptTemplate(

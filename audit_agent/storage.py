@@ -28,6 +28,10 @@ RUN_DIRS = [
     "mcp",
     "runtime_state",
     "runtime_errors",
+    "signals",
+    "investigations",
+    "evidence-gates",
+    "verification-plans",
 ]
 
 
@@ -69,6 +73,29 @@ class RunStore:
             {"run_id": context.run_id, "target_name": target_name, "created_at": utc_now()},
         )
         return context
+
+    def open_run(self, run_id: str) -> RunContext:
+        """Open an existing run while enforcing the configured output-root boundary."""
+        if not run_id or run_id != Path(run_id).name or run_id in {".", ".."}:
+            raise ValueError("resume run ID must be one directory name")
+        root = self.root.resolve()
+        path = (root / run_id).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("resume run escapes the configured output root") from exc
+        if not path.is_dir():
+            raise ValueError(f"resume run does not exist: {run_id}")
+        metadata_path = path / "metadata" / "run.json"
+        if not metadata_path.is_file():
+            raise ValueError("resume run metadata is missing")
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if payload.get("run_id") != run_id or not str(payload.get("target_name") or ""):
+            raise ValueError("resume run metadata does not match its directory")
+        for dirname in RUN_DIRS:
+            if not (path / dirname).is_dir():
+                raise ValueError(f"resume run is missing required directory: {dirname}")
+        return RunContext(path=path, run_id=run_id, target_name=str(payload["target_name"]))
 
 
 def immutable_path(path: Path) -> Path:

@@ -15,6 +15,8 @@ class JobStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
+    DEGRADED = "degraded"
+    CANCELLED = "cancelled"
     FAILED = "failed"
 
 
@@ -97,6 +99,8 @@ class JobStore:
     def mark_succeeded(self, job_id: str, summary: dict[str, Any]) -> ScanJob:
         with self._lock:
             job = self.get(job_id)
+            if job.status == JobStatus.CANCELLED.value:
+                return job
             job.status = JobStatus.SUCCEEDED.value
             job.finished_at = utc_now()
             job.summary = dict(summary or {})
@@ -114,6 +118,43 @@ class JobStore:
             self._persist()
             return job
 
+    def mark_degraded(self, job_id: str, summary: dict[str, Any]) -> ScanJob:
+        with self._lock:
+            job = self.get(job_id)
+            if job.status == JobStatus.CANCELLED.value:
+                return job
+            job.status = JobStatus.DEGRADED.value
+            job.finished_at = utc_now()
+            job.summary = dict(summary or {})
+            if job.summary.get("run_dir"):
+                job.run_dir = str(job.summary["run_dir"])
+            job.phase = "complete"
+            job.resolved_commit = job.summary.get("resolved_commit")
+            job.acquisition_ref = job.summary.get("acquisition_ref")
+            job.cleanup_status = job.summary.get("cleanup_status")
+            job.acquisition_summary = {
+                key: job.summary.get(key)
+                for key in ("acquisition_status", "cache_status", "network_used")
+                if key in job.summary
+            }
+            self._persist()
+            return job
+
+    def mark_cancelled(self, job_id: str, summary: dict[str, Any] | None = None) -> ScanJob:
+        with self._lock:
+            job = self.get(job_id)
+            if job.status in {JobStatus.SUCCEEDED.value, JobStatus.DEGRADED.value, JobStatus.FAILED.value}:
+                return job
+            job.status = JobStatus.CANCELLED.value
+            job.finished_at = utc_now()
+            if summary:
+                job.summary = dict(summary)
+                if job.summary.get("run_dir"):
+                    job.run_dir = str(job.summary["run_dir"])
+            job.phase = "cancelled"
+            self._persist()
+            return job
+
     def mark_failed(
         self,
         job_id: str,
@@ -124,6 +165,8 @@ class JobStore:
     ) -> ScanJob:
         with self._lock:
             job = self.get(job_id)
+            if job.status == JobStatus.CANCELLED.value:
+                return job
             job.status = JobStatus.FAILED.value
             job.finished_at = utc_now()
             job.error = sanitize_error(error)
@@ -148,10 +191,12 @@ class JobStore:
     ) -> ScanJob:
         order = [
             "queued", "validating-source", "acquiring", "resolving-commit", "exporting",
-            "analyzing", "scanning", "verifying", "reporting", "cleaning-up", "complete", "failed",
+            "analyzing", "scanning", "verifying", "reporting", "cleaning-up", "complete", "cancelled", "failed",
         ]
         with self._lock:
             job = self.get(job_id)
+            if job.status == JobStatus.CANCELLED.value and phase != "cancelled":
+                return job
             if phase not in order:
                 raise ValueError(f"unknown job phase: {phase}")
             if job.phase in order and phase != "failed" and order.index(phase) < order.index(job.phase):

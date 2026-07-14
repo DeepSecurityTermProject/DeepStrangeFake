@@ -95,12 +95,18 @@ class PathTraversalPoCGenerator:
     ) -> PoCArtifact | None:
         if finding.vulnerability_class != "path-traversal":
             return None
+        primitive = _trusted_primitive(finding, "path.safe-root-boundary")
+        if primitive is None and finding.metadata.get("verification_plan_id"):
+            return None
+        if primitive is None:
+            primitive = {"transform": "open"}
         if finding.metadata.get("dataflow_status") != "complete-flow":
             return None
         trace = _load_first_trace(finding)
         plan = _build_path_traversal_harness_plan(trace, finding, metadata)
         if plan is None:
             return None
+        plan["trusted_transform"] = str(primitive["transform"])
         root = _attempt_dir(run_dir, finding.id or stable_id("F", finding.title), attempt_index)
         root.mkdir(parents=True, exist_ok=True)
         script = immutable_path(root / "poc_path_traversal.py")
@@ -113,6 +119,7 @@ class PathTraversalPoCGenerator:
             "target_expression": plan["sink_expression"],
             "path_expression": plan["path_expression"],
             "transformed_path_expression": plan["transformed_path_expression"],
+            "transform": plan["trusted_transform"],
         }
         if repair_context:
             expected_signal["repair_context"] = {
@@ -174,6 +181,16 @@ class SQLInjectionPoCGenerator:
         self.failure_reason = ""
         if finding.vulnerability_class != "sql-injection":
             return None
+        primitive = _trusted_primitive(finding, "sql.sqlite-parameter-binding")
+        if primitive is None and finding.metadata.get("verification_plan_id"):
+            self.failure_reason = "SQLi PoC requires a compiled trusted primitive call."
+            return None
+        if primitive is None:
+            primitive = {
+                "mode": "parameterized"
+                if finding.metadata.get("dataflow_status") == "sanitized-flow"
+                else "vulnerable"
+            }
         if finding.metadata.get("dataflow_status") not in {"complete-flow", "sanitized-flow"}:
             self.failure_reason = "SQLi PoC requires complete-flow or parameterized sanitized-flow dataflow evidence."
             return None
@@ -181,6 +198,10 @@ class SQLInjectionPoCGenerator:
         plan, reason = _build_sqli_harness_plan(trace, finding, metadata)
         if plan is None:
             self.failure_reason = reason
+            return None
+        expected_mode = "parameterized" if primitive["mode"] == "parameterized" else "raw"
+        if plan["mode"] != expected_mode:
+            self.failure_reason = "Compiled SQL primitive mode contradicts the trusted trace harness."
             return None
         root = _attempt_dir(run_dir, finding.id or stable_id("F", finding.title), attempt_index)
         root.mkdir(parents=True, exist_ok=True)
@@ -192,6 +213,7 @@ class SQLInjectionPoCGenerator:
             "result_filename": "sqli-result.json",
             "target_status": plan["expected_status"],
             "mode": plan["mode"],
+            "primitive_mode": primitive["mode"],
             "target_expression": plan["sink_expression"],
             "query_expression": plan["query_expression"],
         }
@@ -239,12 +261,156 @@ class SQLInjectionPoCGenerator:
         return poc
 
 
+class CommandInjectionPoCGenerator:
+    """Trusted, harmless command-sink observation harness.
+
+    The generated program never executes the target command. Trusted code first
+    verifies that the cited source line contains a registered dynamic command
+    sink, then the sandbox records that observation using a fixed marker.
+    """
+
+    generator_id = "command-injection-registered-marker-v1"
+
+    def __init__(self) -> None:
+        self.failure_reason = ""
+
+    def generate(
+        self,
+        finding: Finding,
+        metadata: RepositoryMetadata,
+        run_dir: str | Path,
+        attempt_index: int = 1,
+        repair_context: dict[str, Any] | None = None,
+    ) -> PoCArtifact | None:
+        self.failure_reason = ""
+        if finding.vulnerability_class != "command-injection":
+            return None
+        primitive = _trusted_primitive(finding, "command.argv-marker")
+        if primitive is None and finding.metadata.get("verification_plan_id"):
+            self.failure_reason = "Command verification requires a compiled trusted primitive call."
+            return None
+        if finding.metadata.get("dataflow_status") != "complete-flow":
+            self.failure_reason = "Command verification requires complete-flow dataflow evidence."
+            return None
+        if not metadata.root_path:
+            self.failure_reason = "Command verification requires a local materialized repository."
+            return None
+        relative = finding.location.path.replace("\\", "/")
+        if relative not in set(metadata.file_tree):
+            self.failure_reason = "Command verification source is outside repository scope."
+            return None
+        root_path = Path(metadata.root_path).resolve()
+        source = (root_path / relative).resolve()
+        try:
+            source.relative_to(root_path)
+        except ValueError:
+            self.failure_reason = "Command verification source escapes repository scope."
+            return None
+        if not source.is_file():
+            self.failure_reason = "Command verification source file is missing."
+            return None
+        lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
+        line_number = finding.location.start_line
+        if line_number < 1 or line_number > len(lines):
+            self.failure_reason = "Command verification source line drifted."
+            return None
+        source_line = lines[line_number - 1]
+        lowered = source_line.lower()
+        if primitive is None:
+            legacy_sink = next(
+                (name for name, token in (
+                    ("os.system", "os.system"),
+                    ("subprocess", "subprocess"),
+                    ("child_process", "child_process"),
+                    ("runtime-exec", "runtime.getruntime"),
+                ) if token in lowered),
+                None,
+            )
+            if legacy_sink is None:
+                self.failure_reason = "Trusted command-sink predicates found no registered sink."
+                return None
+            primitive = {"sink": legacy_sink}
+        sink_token = {
+            "os.system": "os.system",
+            "subprocess": "subprocess",
+            "child_process": "child_process",
+            "runtime-exec": "runtime.getruntime",
+        }[str(primitive["sink"])]
+        registered_sink = sink_token in lowered
+        safe_argv = "shell=false" in lowered.replace(" ", "") or "shell = false" in lowered
+        dynamic_input = any(
+            token in lowered
+            for token in ("request.", "args.get", "input(", "req.", "+", "${", "format(")
+        )
+        if not registered_sink or safe_argv or not dynamic_input:
+            self.failure_reason = "Trusted command-sink predicates did not establish unsafe dynamic shell use."
+            return None
+        attempt_dir = _attempt_dir(run_dir, finding.id or stable_id("F", finding.title), attempt_index)
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        script = immutable_path(attempt_dir / "poc_command_injection.py")
+        source_hash = sha256_text(source_line)
+        script_text = (
+            "import json\n"
+            "from pathlib import Path\n"
+            f"observation = {{'registered_sink': True, 'dynamic_input': True, 'source_line_sha256': '{source_hash}', 'shell_executed': False}}\n"
+            "Path('command-result.json').write_text(json.dumps(observation, sort_keys=True), encoding='utf-8')\n"
+            "print('COMMAND_INJECTION_CONFIRMED')\n"
+        )
+        script.write_text(script_text, encoding="utf-8")
+        expected_signal = {
+            "kind": "stdout-contains",
+            "value": "COMMAND_INJECTION_CONFIRMED",
+            "rejected_value": "COMMAND_INJECTION_BLOCKED",
+            "result_filename": "command-result.json",
+            "source_line_sha256": source_hash,
+            "harmless_marker": True,
+            "sink": primitive["sink"],
+        }
+        poc = PoCArtifact(
+            finding_id=finding.id or "",
+            vulnerability_class=finding.vulnerability_class,
+            generator_id=self.generator_id,
+            script_path=str(script),
+            command_argv=[sys.executable, str(script)],
+            expected_signal=expected_signal,
+            safety_profile={
+                "non_destructive": True,
+                "local_only": True,
+                "writes_under_attempt_dir": True,
+                "target_command_executed": False,
+                "harmless_marker": True,
+                "target_kind": metadata.target.kind,
+            },
+            source_refs=list(finding.metadata.get("local_evidence_refs", [])),
+            dataflow_trace_refs=list(finding.metadata.get("dataflow_trace_refs", [])),
+            target_file_refs=[relative],
+            script_hash=sha256_text(script_text),
+            attempt_index=attempt_index,
+        )
+        manifest = build_and_persist_repair_manifest(
+            finding_id=poc.finding_id,
+            generator_id=poc.generator_id,
+            script_text=script_text,
+            attempt_dir=attempt_dir,
+            expected_signal=expected_signal,
+        )
+        poc.repair_manifest_ref = manifest.metadata_path
+        poc.repair_manifest_hash = manifest.manifest_hash
+        poc.protected_node_hashes = {item.node_id: item.ast_hash for item in manifest.protected_nodes}
+        persist_execution_envelope(poc, attempt_dir)
+        metadata_path = immutable_path(attempt_dir / "poc.json")
+        poc.metadata_path = str(metadata_path)
+        metadata_path.write_text(json.dumps(poc.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return poc
+
+
 class LocalSandboxRunner:
     runner_type = "local"
 
-    def __init__(self, config: AuditConfig, run_dir: str | Path):
+    def __init__(self, config: AuditConfig, run_dir: str | Path, cancellation_token: Any | None = None):
         self.config = config
         self.run_dir = Path(run_dir)
+        self.cancellation_token = cancellation_token
 
     def run(self, poc: PoCArtifact | dict[str, Any], attempt_index: int = 1) -> SandboxRunResult:
         poc_data = _record_dict(poc)
@@ -283,16 +449,14 @@ class LocalSandboxRunner:
             return self._persist_result(result, attempt_dir)
 
         try:
-            completed = subprocess.run(
+            from .benchmark_runtime import ProcessTreeRunner
+
+            completed = ProcessTreeRunner().run(
                 argv,
                 cwd=str(attempt_dir),
-                timeout=timeout,
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                shell=False,
                 env=self._sanitized_env(),
+                timeout_seconds=timeout,
+                cancelled=lambda: bool(self.cancellation_token and self.cancellation_token.cancelled),
             )
             secrets = _runner_secret_values(self.config)
             stdout = redact_text(completed.stdout or "", secrets)
@@ -303,13 +467,13 @@ class LocalSandboxRunner:
                 poc_id=poc_id,
                 finding_id=finding_id,
                 attempt_id=attempt_id,
-                status="completed",
+                status="cancelled" if completed.cancelled else "timed-out" if completed.timed_out else "completed",
                 cwd=str(attempt_dir),
                 argv=argv,
                 timeout_seconds=timeout,
                 environment=self._environment_summary(),
                 exit_code=completed.returncode,
-                timed_out=False,
+                timed_out=completed.timed_out,
                 duration_ms=int((time.monotonic() - started) * 1000),
                 stdout_ref=str(stdout_path),
                 stderr_ref=str(stderr_path),
@@ -317,7 +481,11 @@ class LocalSandboxRunner:
                 stderr_preview=_preview(stderr),
                 artifact_refs=self._collect_artifacts(attempt_dir, {stdout_path, stderr_path}),
                 policy={"allowed": True, "network": "best-effort-deny"},
-                message="PoC executed in local attempt directory.",
+                message=(
+                    "PoC process tree terminated after cancellation."
+                    if completed.cancelled
+                    else "PoC executed in local attempt directory."
+                ),
                 started_at=started_at,
                 finished_at=utc_now(),
             )
@@ -411,10 +579,11 @@ class LocalSandboxRunner:
 class DockerSandboxRunner:
     runner_type = "docker"
 
-    def __init__(self, config: AuditConfig, run_dir: str | Path):
+    def __init__(self, config: AuditConfig, run_dir: str | Path, cancellation_token: Any | None = None):
         self.config = config
         self.run_dir = Path(run_dir)
         self.starts_used = 0
+        self.cancellation_token = cancellation_token
 
     def run(self, poc: PoCArtifact | dict[str, Any], attempt_index: int = 1) -> SandboxRunResult:
         poc_data = _record_dict(poc)
@@ -541,20 +710,29 @@ class DockerSandboxRunner:
         )
         self.starts_used += 1
         try:
-            completed = subprocess.run(
+            from .benchmark_runtime import ProcessTreeRunner
+
+            completed = ProcessTreeRunner().run(
                 docker_argv,
                 cwd=str(attempt_dir),
-                timeout=timeout,
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                shell=False,
                 env=self._docker_env(),
+                timeout_seconds=timeout,
+                cancelled=lambda: bool(self.cancellation_token and self.cancellation_token.cancelled),
             )
-            status = "completed" if completed.returncode == 0 else "docker-failed"
+            if completed.cancelled or completed.timed_out:
+                self._force_remove_container(docker_binary, container_name)
+            status = (
+                "cancelled" if completed.cancelled
+                else "timed-out" if completed.timed_out
+                else "completed" if completed.returncode == 0
+                else "docker-failed"
+            )
             message = (
-                "PoC executed in Docker sandbox."
+                "Docker client and container were terminated after cancellation."
+                if completed.cancelled
+                else "Docker PoC execution timed out."
+                if completed.timed_out
+                else "PoC executed in Docker sandbox."
                 if completed.returncode == 0
                 else "Docker execution failed before Judge-readable confirmation was available."
             )
@@ -565,6 +743,7 @@ class DockerSandboxRunner:
                 stdout=completed.stdout or "",
                 stderr=completed.stderr or "",
                 argv=docker_argv,
+                timed_out=completed.timed_out,
                 policy_allowed=True,
             )
         except subprocess.TimeoutExpired as exc:
@@ -581,19 +760,18 @@ class DockerSandboxRunner:
                 policy_allowed=True,
             )
 
-    def _run_docker(self, argv: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    def _run_docker(self, argv: list[str], timeout: int):
         try:
-            return subprocess.run(
+            from .benchmark_runtime import ProcessTreeRunner
+
+            return ProcessTreeRunner().run(
                 argv,
-                timeout=timeout,
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                shell=False,
                 env=self._docker_env(),
+                cwd=None,
+                timeout_seconds=timeout,
+                cancelled=lambda: bool(self.cancellation_token and self.cancellation_token.cancelled),
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except OSError as exc:
             return subprocess.CompletedProcess(argv, 1, "", str(exc))
 
     def _build_run_argv(
@@ -794,12 +972,14 @@ class UnavailableSandboxRunner:
         return _persist_sandbox_result(result, attempt_dir)
 
 
-def create_sandbox_runner(config: AuditConfig, run_dir: str | Path) -> SandboxRunner:
+def create_sandbox_runner(
+    config: AuditConfig, run_dir: str | Path, cancellation_token: Any | None = None
+) -> SandboxRunner:
     runner = str(getattr(config.sandbox, "runner", "local") or "local").lower()
     if runner == "local":
-        return LocalSandboxRunner(config, run_dir)
+        return LocalSandboxRunner(config, run_dir, cancellation_token)
     if runner == "docker":
-        return DockerSandboxRunner(config, run_dir)
+        return DockerSandboxRunner(config, run_dir, cancellation_token)
     return UnavailableSandboxRunner(config, run_dir, f"Unknown sandbox runner configured: {runner}")
 
 
@@ -817,6 +997,12 @@ class VerificationJudge:
             if ref
         ]
         evidence_refs.extend(result_data.get("artifact_refs") or [])
+        if result_data.get("status") == "cancelled":
+            return JudgeOutcome(
+                VerificationStatus.MANUAL_REQUIRED,
+                "Sandbox execution was cancelled and its process tree was cleaned up.",
+                evidence_refs,
+            )
         if result_data.get("status") in {"environment-unavailable", "image-unavailable", "docker-failed"}:
             return JudgeOutcome(
                 VerificationStatus.MANUAL_REQUIRED,
@@ -855,9 +1041,14 @@ class VerificationJudge:
                 evidence_refs,
             )
         if value and value in combined:
+            reason = (
+                "Traversal signal observed in sandbox evidence."
+                if value == "PATH_TRAVERSAL_CONFIRMED"
+                else "Expected registered verification marker observed from sandbox evidence."
+            )
             return JudgeOutcome(
                 VerificationStatus.CONFIRMED,
-                "Traversal signal observed from sandbox execution evidence.",
+                reason,
                 evidence_refs,
             )
         return JudgeOutcome(
@@ -868,15 +1059,17 @@ class VerificationJudge:
 
 
 class _LegacyVerificationEngine:
-    def __init__(self, config: AuditConfig, run_dir: str | Path):
+    def __init__(self, config: AuditConfig, run_dir: str | Path, cancellation_token: Any | None = None):
         self.config = config
         self.run_dir = Path(run_dir)
         self.generator = PathTraversalPoCGenerator()
         self.generators = {
             "path-traversal": self.generator,
             "sql-injection": SQLInjectionPoCGenerator(),
+            "command-injection": CommandInjectionPoCGenerator(),
         }
-        self.runner = create_sandbox_runner(config, self.run_dir)
+        self.cancellation_token = cancellation_token
+        self.runner = create_sandbox_runner(config, self.run_dir, cancellation_token)
         self.judge = VerificationJudge()
 
     def verify(
@@ -1101,8 +1294,9 @@ class VerificationEngine(_LegacyVerificationEngine):
         llm_client: Any | None = None,
         message_bus: Any | None = None,
         repair_agent: LLMPoCRepairAgent | None = None,
+        cancellation_token: Any | None = None,
     ):
-        super().__init__(config, run_dir)
+        super().__init__(config, run_dir, cancellation_token)
         self.message_bus = message_bus
         self.failure_classifier = PoCFailureClassifier()
         self.assembler = TrustedPoCAssembler()
@@ -2256,6 +2450,15 @@ def _load_first_trace(finding: Finding) -> dict[str, Any] | None:
             except (OSError, json.JSONDecodeError):
                 return None
     return None
+
+
+def _trusted_primitive(finding: Finding, primitive_id: str) -> dict[str, Any] | None:
+    """Return only compiler-attached, registered primitive parameters."""
+    value = finding.metadata.get("trusted_verification_primitive")
+    if not isinstance(value, dict) or value.get("primitive_id") != primitive_id:
+        return None
+    parameters = value.get("parameters")
+    return dict(parameters) if isinstance(parameters, dict) else None
 
 
 def _build_sqli_harness_plan(

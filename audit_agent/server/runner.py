@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import copy
+import inspect
 from pathlib import Path
 from typing import Callable
 
 from ..config import AuditConfig
 from ..integration import load_integration_environment
 from ..pipeline import run_audit
+from ..runtime import CancellationToken
 from ..repository_acquisition import RepositoryAcquisitionService
 from .job_store import JobStore
 from .schemas import ScanRunRequest
@@ -84,30 +86,49 @@ class ScanJobRunner:
         self.acquisition_service = acquisition_service or RepositoryAcquisitionService(
             self.config.remote_acquisition
         )
+        self._tokens: dict[str, CancellationToken] = {}
+        self._futures = {}
 
     def submit(self, job_id: str, request: ScanRunRequest) -> None:
-        self.executor.submit(self.run_job, job_id, request)
+        self._tokens[job_id] = CancellationToken()
+        self._futures[job_id] = self.executor.submit(self.run_job, job_id, request)
+
+    def cancel(self, job_id: str):
+        token = self._tokens.setdefault(job_id, CancellationToken())
+        token.cancel()
+        future = self._futures.get(job_id)
+        if future is not None:
+            future.cancel()
+        return self.job_store.mark_cancelled(job_id)
 
     def run_job(self, job_id: str, request: ScanRunRequest) -> None:
+        if self._tokens.get(job_id) and self._tokens[job_id].cancelled:
+            self.job_store.mark_cancelled(job_id)
+            return
         job = self.job_store.mark_running(job_id)
         config = build_audit_config(request, base_config=self.config)
         output_dir = Path(request.output or job.output_dir)
         try:
             target = request.display_target
+            common_kwargs = {"resume_run_id": request.resume_run_id} if request.resume_run_id else {}
             if request.source and request.source.kind in {"github", "gitlab"}:
-                summary = self.run_audit_func(
-                    target,
-                    config,
-                    output_dir,
-                    requested_revision=request.requested_revision,
-                    job_id=job_id,
-                    acquisition_service=self.acquisition_service,
-                    progress_callback=lambda phase: self.job_store.update_phase(job_id, phase),
-                )
+                kwargs = {
+                    "requested_revision": request.requested_revision,
+                    "job_id": job_id,
+                    "acquisition_service": self.acquisition_service,
+                    "progress_callback": lambda phase: self.job_store.update_phase(job_id, phase),
+                    **common_kwargs,
+                }
+                summary = self._invoke_run(target, config, output_dir, job_id, **kwargs)
             else:
                 self.job_store.update_phase(job_id, "analyzing")
-                summary = self.run_audit_func(target, config, output_dir)
-            self.job_store.mark_succeeded(job_id, summary)
+                summary = self._invoke_run(target, config, output_dir, job_id, **common_kwargs)
+            if summary.get("status") == "cancelled":
+                self.job_store.mark_cancelled(job_id, summary)
+            elif summary.get("status") == "degraded":
+                self.job_store.mark_degraded(job_id, summary)
+            else:
+                self.job_store.mark_succeeded(job_id, summary)
         except Exception as exc:
             self.job_store.mark_failed(
                 job_id,
@@ -115,3 +136,13 @@ class ScanJobRunner:
                 run_dir=getattr(exc, "run_dir", None),
                 summary=getattr(exc, "summary", None),
             )
+
+    def _invoke_run(self, target, config, output_dir, web_job_id: str, **kwargs):
+        signature = inspect.signature(self.run_audit_func)
+        accepts_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+        if accepts_kwargs or "cancellation_token" in signature.parameters:
+            kwargs["cancellation_token"] = self._tokens.setdefault(web_job_id, CancellationToken())
+        return self.run_audit_func(target, config, output_dir, **kwargs)

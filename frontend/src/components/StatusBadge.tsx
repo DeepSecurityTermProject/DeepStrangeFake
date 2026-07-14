@@ -4,6 +4,8 @@ const LABELS: Record<JobStatus, string> = {
   queued: "Queued",
   running: "Running",
   succeeded: "Succeeded",
+  degraded: "Degraded",
+  cancelled: "Cancelled",
   failed: "Failed"
 };
 

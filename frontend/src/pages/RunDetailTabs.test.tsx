@@ -82,6 +82,40 @@ describe("RunDetailTabs", () => {
     expect(screen.getByText(/markdown report is not available/i)).toBeInTheDocument();
   });
 
+  it("shows agent-led modes, gates, plans, budgets, checkpoints, and degradation", () => {
+    render(
+      <RunDetailTabs
+        job={{ ...job, status: "degraded" }}
+        reportJson={{
+          runtime: {
+            investigation: {
+              requested_mode: "agent-led",
+              effective_mode: "deterministic-graph",
+              hypothesis_counts: { promoted: 2, rejected: 1 },
+              evidence_gate_counts: { promoted: 2, rejected: 1 },
+              verification_plan_refs: ["plan-1.json", "plan-2.json"],
+              investigation_budget: {
+                used: { requests: 4, tokens: 120, tool_calls: 6, hypotheses: 3 },
+                limits: { request_budget: 40, token_budget: 200000, max_tool_calls: 256, max_hypotheses: 32 }
+              },
+              checkpoint_summary: { latest_ref: "checkpoint-4.json" },
+              fallback_reason: "provider-unavailable",
+              degraded_reasons: ["provider-unavailable"]
+            }
+          },
+          findings: []
+        }}
+      />
+    );
+    expect(screen.getByText("agent-led")).toBeInTheDocument();
+    expect(screen.getByText("deterministic-graph")).toBeInTheDocument();
+    expect(screen.getAllByText(/promoted:2/).length).toBeGreaterThan(0);
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText(/requests:4/)).toBeInTheDocument();
+    expect(screen.getByText("checkpoint-4.json")).toBeInTheDocument();
+    expect(screen.getAllByText("provider-unavailable").length).toBeGreaterThan(0);
+  });
+
   it("shows verification status distribution and candidate evidence", async () => {
     render(
       <RunDetailTabs

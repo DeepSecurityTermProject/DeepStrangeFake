@@ -53,6 +53,21 @@ describe("apiClient", () => {
     await expect(apiClient.getMarkdownReport("JOB-1")).resolves.toBe("# Report");
   });
 
+  it("requests cancellation through the fixed run endpoint", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ job_id: "JOB-1", status: "cancelled" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    await expect(apiClient.cancelRun("JOB-1")).resolves.toMatchObject({ status: "cancelled" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs/JOB-1/cancel",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("throws a readable error for failed responses", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ detail: { error: "job-not-found" } }), { status: 404 })

@@ -9,7 +9,7 @@ from .models import to_plain, utc_now
 
 
 GRAPH_SCHEMA_VERSION = "agent-execution-graph.v1"
-GRAPH_MODES = {"legacy", "deterministic-graph", "adaptive-graph"}
+GRAPH_MODES = {"agent-led", "legacy", "deterministic-graph", "adaptive-graph"}
 NODE_STATUSES = {
     "pending",
     "runnable",

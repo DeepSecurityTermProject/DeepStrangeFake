@@ -1,17 +1,20 @@
 # LLM Agent Runtime
 
 This runtime turns the deterministic four-agent MVP into a configurable LLM
-agent system while preserving offline mock mode.
+agent system while preserving explicit deterministic and offline test modes.
 
 ## Execution Graph Modes
 
-The runtime exposes three explicit modes:
+The runtime exposes four explicit modes:
 
-- `deterministic-graph` is the default and runs the versioned audit DAG through the single-threaded scheduler.
+- `agent-led` is the default. Analysis proposes bounded hypotheses and selects registered evidence tools; trusted gates, compilers, sandbox controls, and Judge retain security authority. A missing real provider produces an explicit degraded deterministic fallback rather than silently using mock output.
+- `deterministic-graph` runs the versioned audit DAG through the single-threaded scheduler and remains the source-only rollback mode.
 - `adaptive-graph` starts from the same DAG and permits bounded, policy-approved future-node expansion at post-recon and post-analysis checkpoints.
 - `legacy` retains the previous procedural pipeline as a rollback mode.
 
 Select a mode with `audit-agent scan --graph-mode <mode>`. Adaptive scheduling changes the validated path; it does not run nodes in parallel and does not grant new tools, network access, target writes, or executable model-authored behavior.
+
+Agent-led contracts, artifacts, promotion gates, cancellation behavior, and real-model stability commands are documented in `docs/agent-led-investigation.md`.
 
 Graph runs store immutable artifacts under `runs/<run>/graphs/`: the initial graph, transition batches, redacted mutation proposals and policy outcomes, committed revisions, final graph, execution summary, and side-effect-free replay. `runtime_state/state.json` contains additive graph refs, checkpoint counts, fallback reason, and the actual execution path. JSON and Markdown reports contain a concise graph summary and refs.
 
@@ -67,6 +70,16 @@ that group. Immutable events are stored under
 `llm/` before schema, policy, confidence, or post-response token-budget checks.
 Standalone integration preflight keeps its own integration identity and is not
 included in a project audit's resource summary.
+
+Structured output can be selected with `llm.response_format` or the
+`AUDIT_AGENT_LLM_RESPONSE_FORMAT` environment value. Accepted values are
+`auto`, `json_schema`, and `json_object`. In `auto`, known DeepSeek-compatible
+endpoints use JSON Object directly and OpenAI endpoints use JSON Schema.
+Unknown compatible endpoints probe JSON Schema once; an HTTP 400 capability
+rejection is cached by a hashed provider/endpoint/model identity in the run's
+LLM accounting state, so later requests and checkpoint resume use JSON Object
+without repeating the negotiation. Failed attempts remain audited and missing
+usage is never converted to zero.
 
 `llm_requests` counts request groups that dispatched at least once. Provider
 attempts and retries are additive fields. `llm_tokens` contains only

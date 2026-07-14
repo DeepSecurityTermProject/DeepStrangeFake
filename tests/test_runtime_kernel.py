@@ -695,9 +695,11 @@ class AgentRuntimeCompatibilityTests(unittest.TestCase):
             ):
                 result = run_audit(str(project), config=config, output_dir=Path(tmp) / "runs")
 
-            self.assertEqual(config.graph.mode, "deterministic-graph")
+            self.assertEqual(config.graph.mode, "agent-led")
             self.assertEqual(source.read_bytes(), before)
-            self.assertEqual(result["graph_mode"], "deterministic-graph")
+            self.assertEqual(result["status"], "degraded")
+            self.assertEqual(result["requested_mode"], "agent-led")
+            self.assertEqual(result["effective_mode"], "deterministic-graph")
 
     def test_graph_required_report_failure_persists_failed_primary_state(self):
         from audit_agent.pipeline import run_audit
@@ -782,6 +784,7 @@ class AgentRuntimeCompatibilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = create_vulnerable_fixture(Path(tmp))
             config = AuditConfig.default()
+            config.graph.mode = "legacy"
             config.runtime_enabled = True
             config.graph.mode = "legacy"
             config.llm.provider = "mock"
@@ -808,6 +811,7 @@ class AgentRuntimeCompatibilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = create_vulnerable_fixture(Path(tmp))
             config = AuditConfig.default()
+            config.graph.mode = "legacy"
             config.runtime_enabled = True
             config.llm.provider = "mock"
             config.llm_decisions.enabled = True

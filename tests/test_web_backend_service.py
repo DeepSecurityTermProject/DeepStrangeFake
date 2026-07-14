@@ -46,6 +46,17 @@ class ImmediateRunningRunner:
         self.store.mark_running(job_id)
 
 
+class CancellableRecordingRunner(RecordingRunner):
+    def __init__(self, store):
+        super().__init__()
+        self.store = store
+        self.cancelled = []
+
+    def cancel(self, job_id):
+        self.cancelled.append(job_id)
+        return self.store.mark_cancelled(job_id)
+
+
 class WebBackendApiTests(unittest.TestCase):
     def test_health_endpoint_returns_non_secret_service_metadata(self):
         from audit_agent.server.app import create_app
@@ -82,7 +93,7 @@ class WebBackendApiTests(unittest.TestCase):
             self.assertIn("mock", options["provider_modes"])
             self.assertEqual(
                 options["graph_modes"],
-                ["legacy", "deterministic-graph", "adaptive-graph"],
+                ["agent-led", "legacy", "deterministic-graph", "adaptive-graph"],
             )
             self.assertIn(options["default_graph_mode"], options["graph_modes"])
             self.assertIn("lexical", options["memory_modes"])
@@ -180,6 +191,23 @@ class WebBackendApiTests(unittest.TestCase):
             self.assertEqual(response.json()["status"], "queued")
             self.assertEqual(store.get(response.json()["job_id"]).status, "running")
 
+    def test_cancel_endpoint_marks_job_terminal_and_unknown_job_is_404(self):
+        from audit_agent.server.app import create_app
+        from audit_agent.server.job_store import JobStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp) / "jobs.json")
+            runner = CancellableRecordingRunner(store)
+            client = make_client(create_app(job_store=store, runner=runner))
+            created = client.post("/api/runs", json={"target": "fixtures/integration_smoke"})
+            job_id = created.json()["job_id"]
+            cancelled = client.post(f"/api/runs/{job_id}/cancel")
+            self.assertEqual(cancelled.status_code, 200)
+            self.assertEqual(cancelled.json()["status"], "cancelled")
+            self.assertEqual(cancelled.json()["phase"], "cancelled")
+            self.assertEqual(runner.cancelled, [job_id])
+            self.assertEqual(client.post("/api/runs/JOB-missing/cancel").status_code, 404)
+
     def test_create_run_rejects_missing_target_invalid_enum_and_secret_fields(self):
         from audit_agent.server.app import create_app
         from audit_agent.server.job_store import JobStore
@@ -275,8 +303,50 @@ class WebBackendJobStoreTests(unittest.TestCase):
             self.assertEqual(failed.status, JobStatus.FAILED.value)
             self.assertNotIn("abc123", failed.error)
 
+    def test_cancelled_job_cannot_be_overwritten_by_late_worker_completion(self):
+        from audit_agent.server.job_store import JobStatus, JobStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp) / "jobs.json")
+            job = store.create_job("target", output_dir=Path(tmp) / "runs")
+            store.mark_running(job.job_id)
+            store.mark_cancelled(job.job_id)
+            store.mark_succeeded(job.job_id, {"status": "succeeded"})
+            store.mark_degraded(job.job_id, {"status": "degraded"})
+            store.mark_failed(job.job_id, "late error")
+            terminal = store.get(job.job_id)
+            self.assertEqual(terminal.status, JobStatus.CANCELLED.value)
+            self.assertEqual(terminal.phase, "cancelled")
+
 
 class WebBackendRunnerTests(unittest.TestCase):
+    def test_web_resume_request_is_forwarded_to_public_pipeline(self):
+        from audit_agent.server.job_store import JobStatus, JobStore
+        from audit_agent.server.runner import ScanJobRunner
+        from audit_agent.server.schemas import ScanRunRequest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp) / "jobs.json")
+            job = store.create_job("target", output_dir=Path(tmp) / "runs")
+            captured = {}
+
+            def fake_run_audit(target, config, output_dir, **kwargs):
+                captured.update(kwargs)
+                return {"run_dir": str(Path(tmp) / "runs" / "run-existing"), "status": "succeeded"}
+
+            runner = ScanJobRunner(store, run_audit_func=fake_run_audit)
+            runner.run_job(
+                job.job_id,
+                ScanRunRequest(
+                    target="target",
+                    output=str(Path(tmp) / "runs"),
+                    resume_run_id="run-existing",
+                ),
+            )
+            self.assertEqual(captured["resume_run_id"], "run-existing")
+            self.assertIn("cancellation_token", captured)
+            self.assertEqual(store.get(job.job_id).status, JobStatus.SUCCEEDED.value)
+
     def test_request_loads_llm_aliases_from_dotenv(self):
         from audit_agent.server.runner import build_audit_config
         from audit_agent.server.schemas import ScanRunRequest
@@ -432,7 +502,7 @@ class WebBackendArtifactTests(unittest.TestCase):
                 FixtureClient(),
                 LifecycleLedger(run_dir, "run-1"),
                 request_budget=1,
-                token_budget=10,
+                token_budget=100,
             )
             receipt = gateway.invoke(request)
             gateway.record_schema(receipt, valid=True)

@@ -654,10 +654,27 @@ class BenchmarkPipelineTests(unittest.TestCase):
 
     def test_numeric_token_accounting_is_preserved_but_secret_value_is_redacted(self):
         value = redact_secrets(
-            {"llm_tokens": 123, "total_tokens": 123, "api_key": "secret-value", "secret_env_names": ["LLM_API_KEY"]}
+            {
+                "llm_tokens": 123,
+                "total_tokens": 123,
+                "token_budget_plan": {
+                    "token_budget": 16000,
+                    "tokens_used_before_request": 9000,
+                    "remaining_token_budget": 7000,
+                    "prompt_token_estimate": 2000,
+                    "configured_max_tokens": 4096,
+                    "effective_max_tokens": 4096,
+                },
+                "access_token": "secret-value",
+                "api_key": "secret-value",
+                "secret_env_names": ["LLM_API_KEY"],
+            }
         )
         self.assertEqual(value["llm_tokens"], 123)
         self.assertEqual(value["total_tokens"], 123)
+        self.assertEqual(value["token_budget_plan"]["remaining_token_budget"], 7000)
+        self.assertEqual(value["token_budget_plan"]["effective_max_tokens"], 4096)
+        self.assertEqual(value["access_token"], "[REDACTED]")
         self.assertEqual(value["api_key"], "[REDACTED]")
         self.assertEqual(value["secret_env_names"], ["LLM_API_KEY"])
 

@@ -325,6 +325,139 @@ class LlmPromptRuntimeTests(unittest.TestCase):
         self.assertEqual({"type": "json_object"}, request_bodies[1]["response_format"])
         self.assertEqual("add_import", response.parsed_json["edits"][0]["op"])
 
+    def test_configured_json_object_bypasses_json_schema_probe(self):
+        request_bodies = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "model": "unit-model",
+                        "choices": [
+                            {
+                                "message": {"content": '{"result":"ok"}'},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {"total_tokens": 5},
+                    }
+                ).encode("utf-8")
+
+        def fake_urlopen(request, timeout):
+            request_bodies.append(json.loads(request.data.decode("utf-8")))
+            return FakeResponse()
+
+        env_name = "AUDIT_AGENT_TEST_CONFIGURED_FORMAT_KEY"
+        with patch.dict(os.environ, {env_name: "test-key"}):
+            client = OpenAICompatibleClient(
+                LlmConfig(
+                    provider="openai-compatible",
+                    model="unit-model",
+                    base_url="https://provider.example/v1",
+                    api_key_env=env_name,
+                    retry_count=0,
+                    response_format="json_object",
+                )
+            )
+            request = LLMRequest(
+                role="analysis",
+                prompt="Return strict JSON.",
+                model="unit-model",
+                response_schema={"type": "object"},
+                response_format="auto",
+            )
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                client.complete(request)
+
+        self.assertEqual(1, len(request_bodies))
+        self.assertEqual({"type": "json_object"}, request_bodies[0]["response_format"])
+
+    def test_auto_format_rejection_is_cached_across_resumed_client(self):
+        request_bodies = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "model": "unit-model",
+                        "choices": [
+                            {
+                                "message": {"content": '{"result":"ok"}'},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {"total_tokens": 5},
+                    }
+                ).encode("utf-8")
+
+        def unsupported_schema(request, timeout):
+            request_bodies.append(json.loads(request.data.decode("utf-8")))
+            if len(request_bodies) == 1:
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    400,
+                    "json_schema unsupported",
+                    {},
+                    None,
+                )
+            return FakeResponse()
+
+        env_name = "AUDIT_AGENT_TEST_CACHED_FORMAT_KEY"
+        config = LlmConfig(
+            provider="openai-compatible",
+            model="unit-model",
+            base_url="https://unknown-provider.example/v1",
+            api_key_env=env_name,
+            retry_count=0,
+        )
+        request = LLMRequest(
+            role="analysis",
+            prompt="Return strict JSON.",
+            model="unit-model",
+            response_schema={"type": "object"},
+            response_format="auto",
+        )
+        with patch.dict(os.environ, {env_name: "test-key"}):
+            runtime_state = {}
+            first_client = OpenAICompatibleClient(config)
+            first_client.set_runtime_state(runtime_state)
+            with patch("urllib.request.urlopen", side_effect=unsupported_schema):
+                first_client.complete(request)
+
+            resumed_state = json.loads(json.dumps(runtime_state))
+            resumed_client = OpenAICompatibleClient(config)
+            resumed_client.set_runtime_state(resumed_state)
+            resumed_request = LLMRequest(
+                role="verification",
+                prompt="Return strict JSON.",
+                model="unit-model",
+                response_schema={"type": "object"},
+                response_format="auto",
+            )
+            with patch("urllib.request.urlopen", side_effect=unsupported_schema):
+                resumed_client.complete(resumed_request)
+
+        self.assertEqual(
+            ["json_schema", "json_object", "json_object"],
+            [body["response_format"]["type"] for body in request_bodies],
+        )
+        self.assertEqual(
+            ["json_object"],
+            list(resumed_state["response_format_capabilities"].values()),
+        )
+
     def test_openai_compatible_provider_classifies_authentication_failure(self):
         env_name = "AUDIT_AGENT_TEST_OPENAI_KEY"
         os.environ[env_name] = "secret-key"

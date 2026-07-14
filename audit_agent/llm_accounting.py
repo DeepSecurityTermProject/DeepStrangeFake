@@ -5,7 +5,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from .llm import LLMBudgetExceeded, LLMProviderError
+from .llm import (
+    LLMBudgetExceeded,
+    LLMCancelled,
+    LLMProviderError,
+    plan_request_token_budget,
+)
 from .models import LLMRequest, LLMResponse, stable_id, to_plain, utc_now
 from .redaction import redact_secrets
 
@@ -32,6 +37,7 @@ TERMINAL_STATUSES = {
     "timeout",
     "budget-denied",
     "incomplete",
+    "cancelled",
 }
 ACCOUNTING_SOURCES = {
     "lifecycle-ledger",
@@ -306,20 +312,40 @@ class AuditedLLMGateway:
         *,
         request_budget: int,
         token_budget: int,
+        cost_budget_usd: float | None = None,
         response_writer: Callable[[LLMRequest, LLMResponse], str] | None = None,
         accounting_state: dict[str, Any] | None = None,
+        cancellation_token: Any | None = None,
     ) -> None:
         self.client = client
         self.ledger = ledger
         self.request_budget = max(0, int(request_budget))
         self.token_budget = max(0, int(token_budget))
+        self.cost_budget_usd = (
+            None if cost_budget_usd is None else max(0.0, float(cost_budget_usd))
+        )
         self.response_writer = response_writer or self._default_response_writer
         self.accounting_state = accounting_state if accounting_state is not None else {}
         self.requests_used = int(self.accounting_state.get("requests_used", 0) or 0)
         self.tokens_used = int(self.accounting_state.get("tokens_used", 0) or 0)
+        self.cost_used_usd = float(self.accounting_state.get("cost_used_usd", 0.0) or 0.0)
         self._receipts: dict[str, LLMInvocationReceipt] = {}
         self._response_receipts: dict[str, LLMInvocationReceipt] = {}
-        self._invocation_count = 0
+        existing_groups = (
+            len([item for item in self.ledger.root.glob("LLMRG-*") if item.is_dir()])
+            if self.ledger.root.exists()
+            else 0
+        )
+        self._invocation_count = max(
+            int(self.accounting_state.get("invocations_started", 0) or 0),
+            existing_groups,
+        )
+        self._sync_state()
+        self.cancellation_token = cancellation_token
+        if hasattr(client, "set_runtime_state"):
+            client.set_runtime_state(self.accounting_state)
+        if cancellation_token is not None and hasattr(client, "set_cancellation_token"):
+            client.set_cancellation_token(cancellation_token)
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         return self.invoke(request).response  # type: ignore[return-value]
@@ -333,38 +359,75 @@ class AuditedLLMGateway:
 
     def invoke(self, request: LLMRequest, prompt_ref: str | None = None) -> LLMInvocationReceipt:
         self._invocation_count += 1
+        self._sync_state()
         group_id = self.ledger.request_group_id(request, self._invocation_count)
-        receipt = LLMInvocationReceipt(group_id, request, request.role, prompt_ref=prompt_ref)
+        default_max_tokens = getattr(getattr(self.client, "config", None), "max_tokens", None)
+        effective_request, token_plan = plan_request_token_budget(
+            request,
+            token_budget=self.token_budget,
+            tokens_used=self.tokens_used,
+            default_max_tokens=default_max_tokens,
+        )
+        receipt = LLMInvocationReceipt(
+            group_id,
+            effective_request,
+            request.role,
+            prompt_ref=prompt_ref,
+        )
         self._receipts[str(request.id or group_id)] = receipt
         self._event(
             receipt,
             "request-started",
             prompt_ref=prompt_ref,
-            details={"request_id": request.id},
+            details={"request_id": request.id, "token_budget_plan": token_plan},
         )
+        if self.cancellation_token is not None and self.cancellation_token.cancelled:
+            self.terminalize(receipt, "cancelled")
+            error = LLMCancelled("LLM request cancelled before provider dispatch")
+            error.receipt = receipt  # type: ignore[attr-defined]
+            raise error
         if self.requests_used >= self.request_budget:
             self._event(receipt, "budget-denied", details={"phase": "pre-dispatch", "budget": "requests"})
             self.terminalize(receipt, "budget-denied")
             error = LLMBudgetExceeded("LLM request budget exhausted")
             error.receipt = receipt  # type: ignore[attr-defined]
             raise error
-        if self.tokens_used >= self.token_budget:
-            self._event(receipt, "budget-denied", details={"phase": "pre-dispatch", "budget": "tokens"})
+        if not token_plan["dispatch_allowed"]:
+            self._event(
+                receipt,
+                "budget-denied",
+                details={
+                    "phase": "pre-dispatch",
+                    "budget": "tokens",
+                    "reason": "prompt-estimate-exhausts-remaining-budget",
+                    "token_budget_plan": token_plan,
+                },
+            )
             self.terminalize(receipt, "budget-denied")
             error = LLMBudgetExceeded("LLM token budget exhausted")
+            error.receipt = receipt  # type: ignore[attr-defined]
+            raise error
+        if self.cost_budget_usd is not None and self.cost_used_usd >= self.cost_budget_usd:
+            self._event(
+                receipt,
+                "budget-denied",
+                details={"phase": "pre-dispatch", "budget": "known-cost-usd"},
+            )
+            self.terminalize(receipt, "budget-denied")
+            error = LLMBudgetExceeded("LLM known cost budget exhausted")
             error.receipt = receipt  # type: ignore[attr-defined]
             raise error
 
         observer = _AttemptObserver(self, receipt)
         try:
             if hasattr(self.client, "complete_with_attempt_observer"):
-                response = self.client.complete_with_attempt_observer(request, observer)
+                response = self.client.complete_with_attempt_observer(effective_request, observer)
                 receipt.accounting_source = "lifecycle-ledger"
             else:
                 receipt.accounting_source = "compatibility-observer"
                 attempt_id = observer.dispatch_started({"visibility": "one-observable-attempt"})
                 try:
-                    response = self.client.complete(request)
+                    response = self.client.complete(effective_request)
                 except Exception as exc:
                     observer.attempt_failed(attempt_id, _safe_error_details(exc))
                     raise
@@ -381,7 +444,7 @@ class AuditedLLMGateway:
                 },
             )
             receipt.error_ref = error_ref
-            status = "timeout" if _is_timeout(exc) else "provider-error"
+            status = "cancelled" if isinstance(exc, LLMCancelled) else "timeout" if _is_timeout(exc) else "provider-error"
             self.terminalize(receipt, status, error_ref=error_ref)
             raise
 
@@ -391,7 +454,7 @@ class AuditedLLMGateway:
                 attempt_id = observer.dispatch_started({"visibility": "client-returned-without-observer"})
             else:
                 attempt_id = receipt.provider_attempt_ids[-1]
-        response_ref = self.response_writer(request, response)
+        response_ref = self.response_writer(effective_request, response)
         receipt.response = response
         receipt.response_ref = response_ref
         if response.id:
@@ -410,9 +473,36 @@ class AuditedLLMGateway:
             self.tokens_used += total
             self._sync_state()
             if self.tokens_used > self.token_budget:
-                self._event(receipt, "budget-denied", details={"phase": "post-response", "budget": "tokens"})
+                self._event(
+                    receipt,
+                    "budget-denied",
+                    details={
+                        "phase": "post-response",
+                        "budget": "tokens",
+                        "reason": "provider-usage-exceeded-planned-budget",
+                        "token_budget_plan": token_plan,
+                    },
+                )
                 self.terminalize(receipt, "budget-denied")
                 error = LLMBudgetExceeded("LLM response exceeded token budget")
+                error.receipt = receipt  # type: ignore[attr-defined]
+                raise error
+        reported_cost = response.usage.get("cost_usd") if isinstance(response.usage, dict) else None
+        if (
+            isinstance(reported_cost, (int, float))
+            and not isinstance(reported_cost, bool)
+            and reported_cost >= 0
+        ):
+            self.cost_used_usd += float(reported_cost)
+            self._sync_state()
+            if self.cost_budget_usd is not None and self.cost_used_usd > self.cost_budget_usd:
+                self._event(
+                    receipt,
+                    "budget-denied",
+                    details={"phase": "post-response", "budget": "known-cost-usd"},
+                )
+                self.terminalize(receipt, "budget-denied")
+                error = LLMBudgetExceeded("LLM response exceeded known cost budget")
                 error.receipt = receipt  # type: ignore[attr-defined]
                 raise error
         return receipt
@@ -539,7 +629,13 @@ class AuditedLLMGateway:
 
     def _sync_state(self) -> None:
         self.accounting_state.update(
-            {"requests_used": self.requests_used, "tokens_used": self.tokens_used}
+            {
+                "requests_used": self.requests_used,
+                "tokens_used": self.tokens_used,
+                "cost_used_usd": self.cost_used_usd,
+                "cost_budget_usd": self.cost_budget_usd,
+                "invocations_started": self._invocation_count,
+            }
         )
 
 

@@ -1,0 +1,29 @@
+{
+  "schema_version": "agent-led-blindspots.v1",
+  "cases": [
+    {"id":"sqli-cross-file-vulnerable","class":"sql-injection","family":"cross-file-wrapper","expected":"vulnerable","path":"fixtures/agent-led-sqli-cross-file-vulnerable.py"},
+    {"id":"sqli-cross-file-safe","class":"sql-injection","family":"cross-file-wrapper","expected":"safe","path":"fixtures/agent-led-sqli-cross-file-safe.py"},
+    {"id":"sqli-indirect-vulnerable","class":"sql-injection","family":"indirect-call","expected":"vulnerable","path":"fixtures/agent-led-sqli-indirect-vulnerable.py"},
+    {"id":"sqli-indirect-safe","class":"sql-injection","family":"indirect-call","expected":"safe","path":"fixtures/agent-led-sqli-indirect-safe.py"},
+    {"id":"sqli-config-vulnerable","class":"sql-injection","family":"config-driven","expected":"vulnerable","path":"fixtures/agent-led-sqli-config-vulnerable.py"},
+    {"id":"sqli-config-safe","class":"sql-injection","family":"config-driven","expected":"safe","path":"fixtures/agent-led-sqli-config-safe.py"},
+    {"id":"command-wrapper-vulnerable","class":"command-injection","family":"cross-file-wrapper","expected":"vulnerable","path":"fixtures/agent-led-command-wrapper-vulnerable.py"},
+    {"id":"command-wrapper-safe","class":"command-injection","family":"cross-file-wrapper","expected":"safe","path":"fixtures/agent-led-command-wrapper-safe.py"},
+    {"id":"command-indirect-vulnerable","class":"command-injection","family":"indirect-call","expected":"vulnerable","path":"fixtures/agent-led-command-indirect-vulnerable.py"},
+    {"id":"command-indirect-safe","class":"command-injection","family":"indirect-call","expected":"safe","path":"fixtures/agent-led-command-indirect-safe.py"},
+    {"id":"command-config-vulnerable","class":"command-injection","family":"config-driven","expected":"vulnerable","path":"fixtures/agent-led-command-config-vulnerable.py"},
+    {"id":"command-config-safe","class":"command-injection","family":"config-driven","expected":"safe","path":"fixtures/agent-led-command-config-safe.py"},
+    {"id":"path-wrapper-vulnerable","class":"path-traversal","family":"cross-file-wrapper","expected":"vulnerable","path":"fixtures/agent-led-path-wrapper-vulnerable.py"},
+    {"id":"path-wrapper-safe","class":"path-traversal","family":"cross-file-wrapper","expected":"safe","path":"fixtures/agent-led-path-wrapper-safe.py"},
+    {"id":"path-indirect-vulnerable","class":"path-traversal","family":"indirect-call","expected":"vulnerable","path":"fixtures/agent-led-path-indirect-vulnerable.py"},
+    {"id":"path-indirect-safe","class":"path-traversal","family":"indirect-call","expected":"safe","path":"fixtures/agent-led-path-indirect-safe.py"},
+    {"id":"path-config-vulnerable","class":"path-traversal","family":"config-driven","expected":"vulnerable","path":"fixtures/agent-led-path-config-vulnerable.py"},
+    {"id":"path-config-safe","class":"path-traversal","family":"config-driven","expected":"safe","path":"fixtures/agent-led-path-config-safe.py"},
+    {"id":"secret-wrapper-vulnerable","class":"hardcoded-secret","family":"cross-file-wrapper","expected":"vulnerable","path":"fixtures/agent-led-secret-wrapper-vulnerable.py"},
+    {"id":"secret-wrapper-safe","class":"hardcoded-secret","family":"cross-file-wrapper","expected":"safe","path":"fixtures/agent-led-secret-wrapper-safe.py"},
+    {"id":"secret-indirect-vulnerable","class":"hardcoded-secret","family":"indirect-call","expected":"vulnerable","path":"fixtures/agent-led-secret-indirect-vulnerable.py"},
+    {"id":"secret-indirect-safe","class":"hardcoded-secret","family":"indirect-call","expected":"safe","path":"fixtures/agent-led-secret-indirect-safe.py"},
+    {"id":"secret-config-vulnerable","class":"hardcoded-secret","family":"config-driven","expected":"vulnerable","path":"fixtures/agent-led-secret-config-vulnerable.py"},
+    {"id":"secret-config-safe","class":"hardcoded-secret","family":"config-driven","expected":"safe","path":"fixtures/agent-led-secret-config-safe.py"}
+  ]
+}

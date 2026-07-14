@@ -54,6 +54,7 @@ class RealServiceIntegrationTests(unittest.TestCase):
                         "OPENAI_API_KEY=super-secret-value",
                         "AUDIT_AGENT_LLM_BASE_URL=https://models.example/v1",
                         "AUDIT_AGENT_LLM_MODEL=live-model",
+                        "AUDIT_AGENT_LLM_RESPONSE_FORMAT=json_object",
                         f"AUDIT_AGENT_CVE_MCP_DIR={cve_dir}",
                         f"AUDIT_AGENT_CVE_MCP_PYTHON={python_path}",
                     ]
@@ -69,6 +70,7 @@ class RealServiceIntegrationTests(unittest.TestCase):
             self.assertTrue(result.loaded)
             self.assertEqual(config.llm.base_url, "https://models.example/v1")
             self.assertEqual(config.llm.model, "live-model")
+            self.assertEqual(config.llm.response_format, "json_object")
             self.assertEqual(config.mcp.command, [str(python_path), "-m", "cve_mcp.server"])
             self.assertEqual(config.mcp.working_dir, str(cve_dir))
             self.assertEqual(config.mcp.env["CACHE_DB_PATH"], str(cve_dir / ".cache" / "cache.db"))
@@ -103,6 +105,14 @@ class RealServiceIntegrationTests(unittest.TestCase):
             self.assertEqual(config.llm.model, "alias-model")
             self.assertEqual(env["LLM_API_KEY"], "alias-secret-value")
             self.assertNotIn("alias-secret-value", json.dumps(result.to_dict()))
+
+    def test_invalid_llm_response_format_override_is_rejected(self):
+        config = AuditConfig.default()
+        with self.assertRaisesRegex(ValueError, "response_format"):
+            load_integration_environment(
+                config,
+                env={"AUDIT_AGENT_LLM_RESPONSE_FORMAT": "free-form"},
+            )
 
     def test_redaction_removes_secret_keys_and_values_recursively(self):
         payload = {

@@ -51,6 +51,7 @@ class ProcessResult:
     stderr: str
     timed_out: bool
     cleanup: dict[str, Any]
+    cancelled: bool = False
 
 
 @dataclass
@@ -269,6 +270,7 @@ class ProcessTreeRunner:
         cwd: str | Path | None,
         timeout_seconds: int,
         secret_values: list[str] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> ProcessResult:
         windows_job = None
         kwargs: dict[str, Any] = {
@@ -304,14 +306,36 @@ class ProcessTreeRunner:
                         stream.close()
                 raise
         try:
-            stdout, stderr = process.communicate(timeout=timeout_seconds)
-            return ProcessResult(
-                returncode=process.returncode,
-                stdout=redact_text(stdout, secret_values)[:20_000],
-                stderr=redact_text(stderr, secret_values)[:20_000],
-                timed_out=False,
-                cleanup={"attempted": False, "success": True, "method": "not-needed", "pid": process.pid},
-            )
+            deadline = time.monotonic() + timeout_seconds
+            while True:
+                if cancelled is not None and cancelled():
+                    cleanup = self.terminate_tree(process, windows_job=windows_job)
+                    try:
+                        stdout, stderr = process.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        stdout, stderr = "", ""
+                    return ProcessResult(
+                        returncode=process.returncode,
+                        stdout=redact_text(stdout, secret_values)[:20_000],
+                        stderr=redact_text(stderr, secret_values)[:20_000],
+                        timed_out=False,
+                        cleanup=cleanup,
+                        cancelled=True,
+                    )
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout_seconds)
+                try:
+                    stdout, stderr = process.communicate(timeout=min(0.2, remaining))
+                    return ProcessResult(
+                        returncode=process.returncode,
+                        stdout=redact_text(stdout, secret_values)[:20_000],
+                        stderr=redact_text(stderr, secret_values)[:20_000],
+                        timed_out=False,
+                        cleanup={"attempted": False, "success": True, "method": "not-needed", "pid": process.pid},
+                    )
+                except subprocess.TimeoutExpired:
+                    continue
         except subprocess.TimeoutExpired:
             cleanup = self.terminate_tree(process, windows_job=windows_job)
             try:
@@ -780,6 +804,10 @@ def build_child_audit_config(
     if values["repair_attempts"] > 2:
         raise ValueError("repair_attempts must be in 0..2")
     config = AuditConfig.default()
+    # The general product default is agent-led. Existing benchmark corpus cases
+    # are deterministic, zero-LLM protocol cases unless a future versioned case
+    # contract explicitly declares another graph mode.
+    config.graph.mode = "deterministic-graph"
     env_map = dict(environment or os.environ)
     load_integration_environment(
         config,

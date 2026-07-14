@@ -28,10 +28,18 @@ class LlmConfig:
     api_key_env: str = "OPENAI_API_KEY"
     timeout_seconds: int = 30
     retry_count: int = 2
+    response_format: str = "auto"
     max_tokens: int = 4096
     token_budget: int = 200000
     request_budget: int | None = None
     cost_budget_usd: float | None = None
+
+    def __post_init__(self) -> None:
+        self.response_format = str(self.response_format or "auto").strip().lower()
+        if self.response_format not in {"auto", "json_schema", "json_object"}:
+            raise ValueError(
+                "LLM response_format must be one of: auto, json_schema, json_object"
+            )
 
 
 @dataclass
@@ -198,7 +206,7 @@ class LlmDecisionRuntimeConfig:
 
 @dataclass
 class GraphRuntimeConfig:
-    mode: str = "deterministic-graph"
+    mode: str = "agent-led"
     max_nodes: int = 64
     max_scheduler_iterations: int = 256
     max_node_attempts: int = 2
@@ -206,9 +214,9 @@ class GraphRuntimeConfig:
     max_checkpoints: int = 2
 
     def __post_init__(self) -> None:
-        if self.mode not in {"legacy", "deterministic-graph", "adaptive-graph"}:
+        if self.mode not in {"agent-led", "legacy", "deterministic-graph", "adaptive-graph"}:
             raise ValueError(
-                "graph.mode must be one of: legacy, deterministic-graph, adaptive-graph"
+                "graph.mode must be one of: agent-led, legacy, deterministic-graph, adaptive-graph"
             )
         for name in (
             "max_nodes",
@@ -237,6 +245,53 @@ class PoCRepairConfig:
     @property
     def total_execution_attempts(self) -> int:
         return 1 + self.max_repair_attempts
+
+
+@dataclass
+class InvestigationConfig:
+    enabled: bool = True
+    max_hypotheses: int = 32
+    max_rounds_per_hypothesis: int = 6
+    max_tool_calls_per_hypothesis: int = 8
+    max_candidates: int = 50
+    token_budget: int = 200_000
+    request_budget: int = 40
+    cost_budget_usd: float | None = 5.0
+    absolute_timeout_seconds: int = 900
+    external_tool_timeout_seconds: int = 60
+    external_tool_output_bytes: int = 1_000_000
+    max_search_results: int = 100
+    max_context_lines: int = 200
+    max_bootstrap_files: int = 12
+    max_bootstrap_lines_per_file: int = 40
+    max_bootstrap_bytes: int = 16_000
+    allow_mock_provider: bool = False
+    resume_from_checkpoint: bool = True
+
+    def __post_init__(self) -> None:
+        integer_fields = (
+            "max_hypotheses",
+            "max_rounds_per_hypothesis",
+            "max_tool_calls_per_hypothesis",
+            "max_candidates",
+            "token_budget",
+            "request_budget",
+            "absolute_timeout_seconds",
+            "external_tool_timeout_seconds",
+            "external_tool_output_bytes",
+            "max_search_results",
+            "max_context_lines",
+            "max_bootstrap_files",
+            "max_bootstrap_lines_per_file",
+            "max_bootstrap_bytes",
+        )
+        for name in integer_fields:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"investigation.{name} must be a positive integer")
+        if self.cost_budget_usd is not None:
+            if isinstance(self.cost_budget_usd, bool) or float(self.cost_budget_usd) <= 0:
+                raise ValueError("investigation.cost_budget_usd must be positive or null")
 
 
 @dataclass
@@ -364,6 +419,7 @@ class AuditConfig:
     message_bus: MessageBusConfig = field(default_factory=MessageBusConfig)
     llm_decisions: LlmDecisionRuntimeConfig = field(default_factory=LlmDecisionRuntimeConfig)
     graph: GraphRuntimeConfig = field(default_factory=GraphRuntimeConfig)
+    investigation: InvestigationConfig = field(default_factory=InvestigationConfig)
     poc_repair: PoCRepairConfig = field(default_factory=PoCRepairConfig)
     audit_scope: AuditScope = field(default_factory=AuditScope)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
@@ -418,6 +474,9 @@ class AuditConfig:
             message_bus=MessageBusConfig(**_known_kwargs(MessageBusConfig, data.get("message_bus", {}))),
             llm_decisions=llm_decisions,
             graph=GraphRuntimeConfig(**_known_kwargs(GraphRuntimeConfig, data.get("graph", {}))),
+            investigation=InvestigationConfig(
+                **_known_kwargs(InvestigationConfig, data.get("investigation", {}))
+            ),
             poc_repair=poc_repair,
             audit_scope=AuditScope(**_known_kwargs(AuditScope, data.get("audit_scope", {}))),
             sandbox=SandboxConfig(**_known_kwargs(SandboxConfig, data.get("sandbox", {}))),

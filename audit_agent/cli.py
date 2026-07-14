@@ -17,6 +17,12 @@ from .benchmark import (
 )
 from .benchmark_evaluation import aggregate_repetitions, promotion_readiness
 from .benchmark_runtime import AtomicJsonStore, run_child_scan
+from .agent_led_benchmark import (
+    default_blindspot_manifest_path,
+    default_stability_manifest_path,
+    evaluate_blindspot_corpus,
+    run_real_model_stability,
+)
 from .config import AuditConfig
 from .integration import load_integration_environment, run_integration_preflight, run_integration_smoke
 from .message_bus import replay_run_summary
@@ -48,11 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     scan.add_argument("--output", default="runs", help="Run output directory.")
+    scan.add_argument("--resume-run-id", default=None, help="Resume an existing agent-led run in --output.")
     scan.add_argument(
         "--graph-mode",
-        choices=["legacy", "deterministic-graph", "adaptive-graph"],
+        choices=["agent-led", "legacy", "deterministic-graph", "adaptive-graph"],
         default=None,
-        help="Execution mode. deterministic-graph is the default; legacy remains available for rollback.",
+        help="Execution mode. agent-led is the default; deterministic, adaptive, and legacy remain rollback choices.",
     )
     scan.add_argument(
         "--validation-level",
@@ -189,6 +196,27 @@ def build_parser() -> argparse.ArgumentParser:
     graph_smoke.add_argument("--provider", default=None)
     graph_smoke.add_argument("--model", default=None)
     graph_smoke.add_argument("--live", action="store_true")
+
+    blindspots = subparsers.add_parser(
+        "agent-led-benchmark",
+        help="Run the reviewed 24-case deterministic-versus-agent-led blind-spot gate.",
+    )
+    blindspots.add_argument("--manifest", default=str(default_blindspot_manifest_path()))
+    blindspots.add_argument("--output", default=None, help="Optional JSON report path.")
+    blindspots.add_argument("--runs-output", default="runs/agent-led-blindspots")
+    blindspots.add_argument("--provider", default=None)
+    blindspots.add_argument("--model", default=None)
+    blindspots.add_argument("--live", action="store_true")
+
+    stability = subparsers.add_parser(
+        "agent-led-stability",
+        help="Preflight or run the fixed-commit three-repository real-model stability gate.",
+    )
+    stability.add_argument("--manifest", default=str(default_stability_manifest_path()))
+    stability.add_argument("--output", default="runs/agent-led-stability")
+    stability.add_argument("--provider", default=None)
+    stability.add_argument("--model", default=None)
+    stability.add_argument("--live", action="store_true")
     return parser
 
 
@@ -206,11 +234,60 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
         audit_kwargs = {"requested_revision": args.revision} if args.revision else {}
+        if args.resume_run_id:
+            audit_kwargs["resume_run_id"] = args.resume_run_id
         result = run_audit(args.target, config, args.output, **audit_kwargs)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "graph-decision-smoke":
         return _run_graph_decision_smoke(config, args)
+    if args.command == "agent-led-benchmark":
+        load_integration_environment(config, cwd=Path.cwd())
+        if args.provider:
+            config.llm.provider = args.provider
+        if args.model:
+            config.llm.model = args.model
+        if args.live:
+            config.runtime_enabled = True
+            config.graph.mode = "agent-led"
+            config.llm_decisions.enabled = True
+            config.llm_decisions.roles = sorted(set(config.llm_decisions.roles).union({"analysis", "verification"}))
+        report = evaluate_blindspot_corpus(
+            args.manifest,
+            config=config,
+            output_root=args.runs_output,
+            execute_live=bool(args.live),
+        )
+        if args.output:
+            AtomicJsonStore.write(args.output, report)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report.get("status") == "deferred" or report["passed"] else 2
+    if args.command == "agent-led-stability":
+        load_integration_environment(config, cwd=Path.cwd())
+        if args.provider:
+            config.llm.provider = args.provider
+        if args.model:
+            config.llm.model = args.model
+        if args.live:
+            config.runtime_enabled = True
+            config.graph.mode = "agent-led"
+            config.llm_decisions.enabled = True
+            config.llm_decisions.roles = sorted(
+                set(config.llm_decisions.roles).union({"analysis", "verification"})
+            )
+            config.sandbox.enabled = True
+            config.sandbox.runner = "docker"
+            config.sandbox.network = "none"
+            config.default_validation_level = "sandbox"
+            config.tool_permissions.live_network_validation = False
+        report = run_real_model_stability(
+            config,
+            manifest_path=args.manifest,
+            output_root=args.output,
+            execute_live=bool(args.live),
+        )
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report["status"] in {"passed", "deferred"} else 2
     if args.command == "benchmark":
         corpus_path = Path(args.benchmark_config) if args.benchmark_config else default_corpus_path()
         dimensions = args.comparison_dimension or ["engine"]

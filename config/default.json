@@ -8,6 +8,7 @@
     "api_key_env": "OPENAI_API_KEY",
     "timeout_seconds": 30,
     "retry_count": 2,
+    "response_format": "auto",
     "max_tokens": 4096,
     "token_budget": 200000,
     "cost_budget_usd": null
@@ -107,6 +108,34 @@
     "tool_budget_per_role": {},
     "allow_live_target_actions": false,
     "decision_artifact_dir": "decisions"
+  },
+  "graph": {
+    "mode": "agent-led",
+    "max_nodes": 64,
+    "max_scheduler_iterations": 256,
+    "max_node_attempts": 2,
+    "max_replans": 2,
+    "max_checkpoints": 2
+  },
+  "investigation": {
+    "enabled": true,
+    "max_hypotheses": 32,
+    "max_rounds_per_hypothesis": 6,
+    "max_tool_calls_per_hypothesis": 8,
+    "max_candidates": 50,
+    "token_budget": 200000,
+    "request_budget": 40,
+    "cost_budget_usd": 5.0,
+    "absolute_timeout_seconds": 900,
+    "external_tool_timeout_seconds": 60,
+    "external_tool_output_bytes": 1000000,
+    "max_search_results": 100,
+    "max_context_lines": 200,
+    "max_bootstrap_files": 12,
+    "max_bootstrap_lines_per_file": 40,
+    "max_bootstrap_bytes": 16000,
+    "allow_mock_provider": false,
+    "resume_from_checkpoint": true
   },
   "poc_repair": {
     "enabled": false,

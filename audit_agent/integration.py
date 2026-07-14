@@ -249,6 +249,9 @@ def _apply_env_overrides(config: AuditConfig, env: dict[str, str]) -> None:
         config.llm.timeout_seconds = int(env["AUDIT_AGENT_LLM_TIMEOUT_SECONDS"])
     if "AUDIT_AGENT_LLM_RETRY_COUNT" in env:
         config.llm.retry_count = int(env["AUDIT_AGENT_LLM_RETRY_COUNT"])
+    if "AUDIT_AGENT_LLM_RESPONSE_FORMAT" in env:
+        config.llm.response_format = env["AUDIT_AGENT_LLM_RESPONSE_FORMAT"].strip().lower()
+        config.llm.__post_init__()
     if "AUDIT_AGENT_LLM_MAX_TOKENS" in env:
         config.llm.max_tokens = int(env["AUDIT_AGENT_LLM_MAX_TOKENS"])
     if "AUDIT_AGENT_LLM_TOKEN_BUDGET" in env:
@@ -337,6 +340,7 @@ def _preflight_llm(
             temperature=0.0,
             max_tokens=min(config.integration.llm_smoke_max_tokens, config.llm.max_tokens),
             response_schema={"type": "object"},
+            response_format="auto",
         )
         response = client.complete(request)
         path = persist_llm_artifact(artifact_dir, request, response)
@@ -460,6 +464,7 @@ def _llm_summary(config: AuditConfig, key_present: bool) -> dict[str, Any]:
         "api_key_present": key_present,
         "timeout_seconds": config.llm.timeout_seconds,
         "retry_count": config.llm.retry_count,
+        "response_format": config.llm.response_format,
         "max_tokens": config.llm.max_tokens,
         "token_budget": config.llm.token_budget,
         "cost_budget_usd": config.llm.cost_budget_usd,

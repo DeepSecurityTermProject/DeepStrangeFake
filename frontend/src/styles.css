@@ -117,6 +117,12 @@ main {
   color: #5d6d7a;
 }
 
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .page-heading > svg {
   color: #126c82;
 }
@@ -359,6 +365,16 @@ tr:last-child td {
 .status-succeeded {
   background: #eaf7ec;
   color: #176d2d;
+}
+
+.status-degraded {
+  background: #fff4df;
+  color: #8a5200;
+}
+
+.status-cancelled {
+  background: #edf1f5;
+  color: #425466;
 }
 
 .status-failed {

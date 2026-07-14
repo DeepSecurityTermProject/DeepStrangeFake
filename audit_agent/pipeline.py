@@ -5,7 +5,7 @@ from typing import Callable
 import json
 
 from .config import AuditConfig
-from .runtime import AgentRuntime
+from .runtime import AgentRuntime, CancellationToken
 from .resource_summary import build_failed_run_resource_summary
 from .repository_acquisition import (
     AcquisitionError,
@@ -23,6 +23,8 @@ def run_audit(
     job_id: str | None = None,
     acquisition_service: RepositoryAcquisitionService | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    cancellation_token: CancellationToken | None = None,
+    resume_run_id: str | None = None,
 ) -> dict:
     """Backward-compatible pipeline entrypoint backed by the runtime kernel."""
     selected_config = config or AuditConfig.default()
@@ -30,6 +32,8 @@ def run_audit(
         selected_config,
         output_dir=output_dir,
         progress_callback=progress_callback,
+        cancellation_token=cancellation_token,
+        resume_run_id=resume_run_id,
     )
     service = acquisition_service or RepositoryAcquisitionService(
         selected_config.remote_acquisition
@@ -48,6 +52,7 @@ def run_audit(
             job_id=job_id,
             service=service,
             progress_callback=progress_callback,
+            cancellation_checker=lambda: bool(cancellation_token and cancellation_token.cancelled),
         )
         if progress_callback:
             progress_callback("analyzing")
@@ -93,6 +98,7 @@ def run_audit(
             }
             terminal_succeeded = cleanup.status == "complete" and run_error is None
             if summary is not None:
+                terminal_degraded = summary.get("status") == "degraded"
                 summary.update(terminal_acquisition)
                 resource_ref = summary.get("resource_summary_ref")
                 if runtime.run and resource_ref and Path(resource_ref).is_file():
@@ -106,7 +112,9 @@ def run_audit(
                         "acquisition_ref": str(final_acquisition_path),
                     }
                     resource_payload["terminal_status"] = (
-                        "succeeded" if terminal_succeeded else "failed"
+                        "degraded"
+                        if terminal_succeeded and terminal_degraded
+                        else "succeeded" if terminal_succeeded else "failed"
                     )
                     final_resource_path = runtime.run.write_json_artifact(
                         "reports", "run-resource-summary-final.v1.json", resource_payload
@@ -120,6 +128,7 @@ def run_audit(
                             str(final_acquisition_path) if final_acquisition_path else None
                         ),
                         succeeded=terminal_succeeded,
+                        degraded=terminal_degraded,
                     )
                 except Exception as exc:
                     summary["report_finalization_status"] = "failed"
@@ -164,6 +173,7 @@ def _finalize_report(
     *,
     acquisition_ref: str | None,
     succeeded: bool,
+    degraded: bool = False,
 ) -> str | None:
     if run_dir is None:
         return None
@@ -186,7 +196,7 @@ def _finalize_report(
         }
     )
     payload["acquisition"] = acquisition_payload
-    payload["run_status"] = "completed" if succeeded else "failed"
+    payload["run_status"] = "degraded" if succeeded and degraded else "completed" if succeeded else "failed"
     _atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2))
 
     markdown_path = run_dir / "reports" / "report.md"
