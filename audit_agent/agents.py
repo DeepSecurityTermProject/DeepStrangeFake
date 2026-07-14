@@ -137,7 +137,7 @@ class AnalysisAgent:
     ) -> AgentRunResult:
         intelligence = intelligence or []
         findings: list[Finding] = []
-        seen_locations: set[tuple[str, int | None, str | None]] = set()
+        seen_locations: set[tuple[Any, ...]] = set()
         for tool_result in tool_results:
             for observation in tool_result.observations:
                 if _is_dataflow_observation(observation):
@@ -164,7 +164,12 @@ class AnalysisAgent:
                 if key in seen_locations:
                     continue
                 seen_locations.add(key)
-                related_intel = _related_intelligence(observation.vulnerability_class, intelligence)
+                intelligence_ref = observation.raw.get("intelligence_ref")
+                related_intel = (
+                    [item for item in intelligence if item.id == intelligence_ref]
+                    if intelligence_ref
+                    else _related_intelligence(observation.vulnerability_class, intelligence)
+                )
                 location = SourceLocation(
                     path=observation.path or "",
                     start_line=observation.line or 1,
@@ -185,6 +190,16 @@ class AnalysisAgent:
                     intelligence_refs=[item.id for item in related_intel],
                     handoff_refs=[recon_handoff.id or ""],
                     agent_trace_refs=[recon_handoff.trace_id] if recon_handoff.trace_id else [],
+                    cve_ids=list(observation.raw.get("cve_ids") or []),
+                    cwe_ids=list(observation.raw.get("cwe_ids") or []),
+                    cvss=observation.raw.get("cvss"),
+                    metadata={
+                        "observation_kind": observation.kind,
+                        "observation_raw": observation.raw,
+                        "external_rule_id": observation.raw.get("rule_id"),
+                        "dependency": observation.raw.get("dependency"),
+                        "local_evidence_refs": [tool_result.id or tool_result.tool_name],
+                    },
                 )
                 _copy_intelligence_context(finding, related_intel)
                 findings.append(finding)
@@ -390,8 +405,16 @@ def _is_dataflow_observation(observation) -> bool:
     return str(observation.kind).startswith("dataflow-") or bool(observation.raw.get("dataflow_trace_id"))
 
 
-def _observation_key(observation) -> tuple[str, int | None, str | None]:
-    return (observation.path or "", observation.line, observation.vulnerability_class)
+def _observation_key(observation) -> tuple[Any, ...]:
+    dependency = observation.raw.get("dependency") or {}
+    return (
+        observation.path or "",
+        observation.line,
+        observation.vulnerability_class,
+        dependency.get("dependency_key"),
+        observation.raw.get("rule_id"),
+        observation.raw.get("vulnerability_id"),
+    )
 
 
 def _finding_from_dataflow_observation(
@@ -527,6 +550,7 @@ def _title_for(vulnerability_class: str) -> str:
         "command-injection": "Potential command injection",
         "path-traversal": "Potential path traversal",
         "hardcoded-secret": "Potential hardcoded secret",
+        "dependency-vulnerability": "Vulnerable dependency",
     }.get(vulnerability_class, f"Potential {vulnerability_class}")
 
 
@@ -536,4 +560,5 @@ def _remediation_for(vulnerability_class: str) -> str:
         "command-injection": "Use fixed command argument arrays and strict allowlists for user input.",
         "path-traversal": "Normalize paths, enforce a safe base directory, and reject traversal tokens.",
         "hardcoded-secret": "Move secrets into a managed secret store and rotate exposed credentials.",
+        "dependency-vulnerability": "Upgrade to a fixed dependency version and review the advisory guidance.",
     }.get(vulnerability_class, "Review the affected code path and add targeted controls.")

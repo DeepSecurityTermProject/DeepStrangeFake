@@ -428,18 +428,42 @@ checkout explicitly when network and storage constraints are acceptable.
 
 ## CVE MCP Integration
 
-Configure the CVE MCP command in `config/default.json` or `.env`:
+Configure the CVE MCP command and dependency query policy in
+`config/default.json` or `.env`:
 
 ```json
 {
   "cve_mcp": {
     "enabled": true,
-    "command": ["cve-mcp-server"],
+    "command": ["external/cve-mcp-server/venv/Scripts/python.exe", "-m", "cve_mcp.server"],
     "query_budget": 50,
     "degraded_mode": true
+  },
+  "dependency_intelligence": {
+    "enabled": true,
+    "batch_size": 20,
+    "query_budget": 50,
+    "cache_policy": "persistent",
+    "cache_path": ".audit-cache/dependency-intelligence.v1.json",
+    "cache_ttl_seconds": 86400
   }
 }
 ```
+
+Equivalent environment overrides are
+`AUDIT_DEPENDENCY_INTELLIGENCE_ENABLED`, `AUDIT_DEPENDENCY_BATCH_SIZE`,
+`AUDIT_DEPENDENCY_QUERY_BUDGET`, `AUDIT_DEPENDENCY_CACHE_POLICY`,
+`AUDIT_DEPENDENCY_CACHE_PATH`, and `AUDIT_DEPENDENCY_CACHE_TTL_SECONDS`.
+`batch_size` must be between 1 and 1000. One uncached MCP batch consumes one
+dependency query-budget unit; positive and negative cache hits consume none.
+
+Repository analysis discovers Python dependencies from `requirements.txt` and
+PEP 621 `pyproject.toml` project/optional dependency lists, plus npm
+`package.json`, `go.mod`, and Cargo manifests. Every unique dependency is
+queried unless the configured budget or provider availability prevents it.
+The report records `covered_dependency_count`, `unqueried_dependency_count`,
+cache/query counters, and `complete`. A zero-vulnerability result is conclusive
+only when `complete` is true.
 
 If the MCP server is unavailable, the adapter records degraded observations and
 the audit continues. CVE data is treated as contextual intelligence for

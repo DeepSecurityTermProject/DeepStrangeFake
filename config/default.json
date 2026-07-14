@@ -73,6 +73,14 @@
       "validation": 20
     }
   },
+  "dependency_intelligence": {
+    "enabled": true,
+    "batch_size": 20,
+    "query_budget": 50,
+    "cache_policy": "persistent",
+    "cache_path": ".audit-cache/dependency-intelligence.v1.json",
+    "cache_ttl_seconds": 86400
+  },
   "memory": {
     "enabled": true,
     "mode": "lexical",
@@ -110,7 +118,8 @@
       "sql-injection",
       "command-injection",
       "path-traversal",
-      "hardcoded-secret"
+      "hardcoded-secret",
+      "dependency-vulnerability"
     ],
     "include_patterns": [],
     "exclude_patterns": ["tests/**", "test/**", "fixtures/**", "external/**", "openspec/**", ".codex/**"],

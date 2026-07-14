@@ -15,6 +15,18 @@ def create_vulnerable_fixture(root: Path) -> Path:
         "Flask==2.2.0\nrequests>=2.31.0\n",
         encoding="utf-8",
     )
+    (project / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[project]",
+                'dependencies = ["fastapi>=0.111,<1.0", "uvicorn[standard]>=0.30; python_version >= \'3.12\'"]',
+                "",
+                "[project.optional-dependencies]",
+                'js-ast = ["tree-sitter>=0.22,<1.0"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
     (project / "package.json").write_text(
         json.dumps({"dependencies": {"express": "^4.18.0", "lodash": "4.17.21"}}),
         encoding="utf-8",
@@ -63,8 +75,25 @@ class RepositoryAnalysisTests(unittest.TestCase):
             self.assertNotIn("node_modules/ignored.js", metadata.file_tree)
 
             package_names = {dep.name for dep in metadata.dependencies}
-            self.assertTrue({"Flask", "requests", "express", "lodash"}.issubset(package_names))
+            self.assertTrue(
+                {
+                    "Flask",
+                    "requests",
+                    "fastapi",
+                    "uvicorn",
+                    "tree-sitter",
+                    "express",
+                    "lodash",
+                }.issubset(package_names)
+            )
             self.assertTrue(all(dep.identifiers for dep in metadata.dependencies))
+            pyproject_dependencies = {
+                dependency.name: dependency
+                for dependency in metadata.dependencies
+                if dependency.manifest_path == "pyproject.toml"
+            }
+            self.assertEqual(pyproject_dependencies["fastapi"].version, "0.111,<1.0")
+            self.assertEqual(pyproject_dependencies["uvicorn"].version, "0.30")
 
             surface_types = {surface.kind for surface in metadata.attack_surfaces}
             self.assertIn("route", surface_types)

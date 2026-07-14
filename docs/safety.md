@@ -53,6 +53,14 @@ timestamps, query inputs, degraded mode, and the distinction between contextual
 intelligence and validation evidence. Local evidence remains mandatory for
 accepted findings.
 
+Dependency manifests may contain ranges or omit exact resolved versions. The
+adapter records both the declared version and the normalized query version, and
+dependency findings remain contextual `likely` results rather than confirmed
+runtime vulnerabilities. Reports expose whether every discovered dependency
+was covered; `complete=false` or a positive `unqueried_dependency_count` must
+not be interpreted as a clean dependency scan. This lookup is read-only and
+does not install dependencies or execute target project code.
+
 ## LLM Runtime Safety
 
 Real-provider mode reads API keys from environment variables such as

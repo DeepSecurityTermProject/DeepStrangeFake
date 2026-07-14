@@ -277,6 +277,23 @@ def _apply_env_overrides(config: AuditConfig, env: dict[str, str]) -> None:
         config.mcp.timeout_seconds = int(env["AUDIT_AGENT_CVE_MCP_TIMEOUT_SECONDS"])
     if "AUDIT_AGENT_CVE_MCP_QUERY_BUDGET" in env:
         config.mcp.query_budget = int(env["AUDIT_AGENT_CVE_MCP_QUERY_BUDGET"])
+    if "AUDIT_DEPENDENCY_INTELLIGENCE_ENABLED" in env:
+        config.dependency_intelligence.enabled = env[
+            "AUDIT_DEPENDENCY_INTELLIGENCE_ENABLED"
+        ].strip().lower() in {"1", "true", "yes", "on"}
+    if "AUDIT_DEPENDENCY_BATCH_SIZE" in env:
+        config.dependency_intelligence.batch_size = int(env["AUDIT_DEPENDENCY_BATCH_SIZE"])
+    if "AUDIT_DEPENDENCY_QUERY_BUDGET" in env:
+        config.dependency_intelligence.query_budget = int(env["AUDIT_DEPENDENCY_QUERY_BUDGET"])
+    if "AUDIT_DEPENDENCY_CACHE_POLICY" in env:
+        config.dependency_intelligence.cache_policy = env["AUDIT_DEPENDENCY_CACHE_POLICY"]
+    if "AUDIT_DEPENDENCY_CACHE_PATH" in env:
+        config.dependency_intelligence.cache_path = env["AUDIT_DEPENDENCY_CACHE_PATH"]
+    if "AUDIT_DEPENDENCY_CACHE_TTL_SECONDS" in env:
+        config.dependency_intelligence.cache_ttl_seconds = int(
+            env["AUDIT_DEPENDENCY_CACHE_TTL_SECONDS"]
+        )
+    config.dependency_intelligence.__post_init__()
     if "AUDIT_AGENT_CVE_MCP_ALLOWED_TOOLS" in env:
         config.mcp.allowed_tools = [item.strip() for item in env["AUDIT_AGENT_CVE_MCP_ALLOWED_TOOLS"].split(",") if item.strip()]
     if not config.mcp.allowed_tools:

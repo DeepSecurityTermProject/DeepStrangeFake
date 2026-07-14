@@ -43,6 +43,14 @@ The default safe tool allowlist follows the real cve-mcp 0.2.0 tool names:
 `scan_dependencies`, `check_package_vulns`, `calculate_risk_score`, and
 `triage_cve`.
 
+Dependency intelligence calls `scan_dependencies` using its actual MCP
+contract, a single `dependency_list` string. Generic packages are serialized as
+`name:ecosystem:version`; Maven packages are sent as a minimal `pom.xml` batch.
+The adapter parses the server's text response, verifies package identity and
+scanned counts against the requested batch, and fails closed on malformed or
+mismatched output. Query batching, cache policy, and query budgets are separate
+from the general MCP tool-call budget; see `docs/usage.md`.
+
 ## Model API
 
 The runtime loads `.env` before live preflight or smoke runs. Supported names:

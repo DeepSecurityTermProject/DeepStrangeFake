@@ -13,6 +13,7 @@ REMEDIATION = {
     "command-injection": "Avoid shell invocation; use fixed argument arrays and strict allowlists.",
     "path-traversal": "Canonicalize paths, enforce a safe root, and reject traversal sequences.",
     "hardcoded-secret": "Move secrets to a secret manager or environment variables and rotate exposed values.",
+    "dependency-vulnerability": "Upgrade to a fixed version and follow the referenced dependency advisory.",
 }
 
 

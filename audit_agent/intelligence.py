@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -51,6 +52,7 @@ class CveMcpAdapter:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env={**os.environ, **self.env} if self.env else None,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             return self._degraded(f"CVE MCP server unavailable: {exc}", {"tool": tool, "payload": payload})
@@ -118,4 +120,3 @@ def normalize_cve_mcp_output(
         validation_evidence=False,
         raw=raw,
     )
-

@@ -16,6 +16,14 @@ from .decisions import (
     merge_decision,
     persist_decision_bundle,
 )
+from .dependency_intelligence import (
+    CommandMcpBatchProvider,
+    DependencyIntelligenceRun,
+    DependencyIntelligenceService,
+    RuntimeMcpBatchProvider,
+    cache_path_for_policy,
+    summary_without_dependencies,
+)
 from .evidence import EvidenceBuilder
 from .graph_artifacts import GraphArtifactRecorder
 from .graph_models import GraphBudget
@@ -33,10 +41,10 @@ from .graph_templates import (
     build_default_template_catalog,
     build_deterministic_audit_graph,
 )
-from .intelligence import CveMcpAdapter, normalize_cve_mcp_output
+from .intelligence import CveMcpAdapter
 from .llm import build_llm_client, persist_llm_artifact, validate_json_schema
 from .llm_accounting import AuditedLLMGateway, LifecycleLedger, reconcile_llm_lifecycle
-from .mcp_client import CveMcpClient
+from .mcp_client import CveMcpClient  # Compatibility import for existing runtime patch points.
 from .memory import LexicalMemoryStore, MemoryIndexer, persist_retrievals
 from .message_bus import MessageBus
 from .models import LLMRequest, ToolCallResult, stable_id, to_plain, utc_now
@@ -475,6 +483,76 @@ class ToolBroker:
             self.artifacts.run_state.record_message(msg.message_id)
 
 
+def _run_dependency_intelligence(
+    config: AuditConfig,
+    metadata,
+    run_dir: Path,
+) -> DependencyIntelligenceRun:
+    settings = config.dependency_intelligence
+    if not settings.enabled:
+        service = DependencyIntelligenceService(
+            None,
+            batch_size=settings.batch_size,
+            query_budget=0,
+            cache_path=None,
+            cache_ttl_seconds=settings.cache_ttl_seconds,
+        )
+        return service.scan(metadata.dependencies)
+
+    provider_budget = (
+        config.mcp.query_budget
+        if config.runtime_enabled
+        else config.cve_mcp.query_budget
+    )
+    query_budget = min(
+        settings.query_budget,
+        config.audit_scope.cve_query_budget,
+        provider_budget,
+    )
+    cache_path = cache_path_for_policy(
+        settings.cache_policy,
+        settings.cache_path,
+        run_dir,
+    )
+    provider = None
+    if config.runtime_enabled and config.mcp.enabled:
+        provider = RuntimeMcpBatchProvider(
+            config.mcp.command,
+            config.mcp.timeout_seconds,
+            query_budget,
+            allowed_tools=(
+                config.mcp.allowed_tools
+                or config.integration.safe_cve_mcp_tools
+            ),
+            cwd=config.mcp.working_dir,
+            env=config.mcp.env,
+        )
+    elif not config.runtime_enabled and config.cve_mcp.enabled:
+        provider = CommandMcpBatchProvider(
+            CveMcpAdapter(
+                enabled=True,
+                command=config.cve_mcp.command,
+                endpoint=config.cve_mcp.endpoint,
+                env=config.cve_mcp.env,
+                timeout=config.cve_mcp.timeout_seconds,
+                query_budget=query_budget,
+                degraded_mode=config.cve_mcp.degraded_mode,
+            )
+        )
+
+    service = DependencyIntelligenceService(
+        provider,
+        batch_size=settings.batch_size,
+        query_budget=query_budget,
+        cache_path=cache_path,
+        cache_ttl_seconds=settings.cache_ttl_seconds,
+    )
+    if isinstance(provider, RuntimeMcpBatchProvider):
+        with provider:
+            return service.scan(metadata.dependencies)
+    return service.scan(metadata.dependencies)
+
+
 class AgentRuntime:
     def __init__(
         self,
@@ -647,55 +725,60 @@ class AgentRuntime:
         self._finish_task(scan_task, output_refs=[result.id or "" for result in scan_results])
 
         intelligence = []
+        dependency_intelligence_summary = summary_without_dependencies()
         if metadata.dependencies:
             mcp_task = self._start_task("recon", "mcp-intelligence")
-            first_dep = metadata.dependencies[0]
-            if config.runtime_enabled and config.mcp.enabled:
-                cve_client = CveMcpClient(
-                    config.mcp.command,
-                    config.mcp.timeout_seconds,
-                    config.mcp.query_budget,
-                    allowed_tools=config.mcp.allowed_tools or config.integration.safe_cve_mcp_tools,
-                    cwd=config.mcp.working_dir,
-                    env=config.mcp.env,
+            dependency_run = _run_dependency_intelligence(config, metadata, self.run.path)
+            intelligence.extend(dependency_run.intelligence)
+            dependency_intelligence_summary = dependency_run.summary
+            records_path = self.artifacts.write_json(
+                "mcp" if config.runtime_enabled else "intelligence",
+                "dependency-intelligence-records.json",
+                [item.to_dict() for item in intelligence],
+                mcp_task,
+            )
+            summary_path = self.artifacts.write_json(
+                "intelligence",
+                "dependency-intelligence-summary.v1.json",
+                dependency_run.summary,
+                mcp_task,
+            )
+            tool_path = self.artifacts.write_json(
+                "tool_outputs",
+                "dependency-intelligence.json",
+                dependency_run.tool_result.to_dict(),
+                mcp_task,
+            )
+            dependency_run.tool_result.artifact_paths.extend(
+                [records_path, summary_path, tool_path]
+            )
+            scan_results.append(dependency_run.tool_result)
+            self.runtime_refs["mcp_call_refs"].extend(
+                item.id or "" for item in intelligence
+            )
+            if self.bus:
+                msg = self.bus.publish(
+                    "mcp",
+                    "recon",
+                    "mcp.dependency-batches",
+                    {
+                        "input_dependency_count": dependency_run.summary["input_dependency_count"],
+                        "unique_dependency_count": dependency_run.summary["unique_dependency_count"],
+                        "queries_used": dependency_run.summary["queries_used"],
+                        "cache_hits": dependency_run.summary["cache_hits"],
+                        "budget_exhausted_count": dependency_run.summary["budget_exhausted_count"],
+                        "task_id": mcp_task.id,
+                    },
+                    artifact_refs=[records_path, summary_path, tool_path],
                 )
-                intel = cve_client.scan_dependency(first_dep.identifiers)
-                intelligence.append(intel)
-                mcp_path = self.artifacts.write_json("mcp", "cve-mcp-intelligence.json", intel.to_dict(), mcp_task)
-                self.runtime_refs["mcp_call_refs"].append(intel.id or "")
-                if self.bus:
-                    msg = self.bus.publish(
-                        "mcp",
-                        "recon",
-                        "mcp.call",
-                        {"dependency": first_dep.name, "degraded": intel.raw.get("degraded", False), "task_id": mcp_task.id},
-                        artifact_refs=[mcp_path],
-                    )
-                    self._record_message(msg.message_id, mcp_task)
-            else:
-                cve_adapter = CveMcpAdapter(
-                    enabled=config.cve_mcp.enabled,
-                    command=config.cve_mcp.command,
-                    endpoint=config.cve_mcp.endpoint,
-                    env=config.cve_mcp.env,
-                    timeout=config.cve_mcp.timeout_seconds,
-                    query_budget=config.cve_mcp.query_budget,
-                    degraded_mode=config.cve_mcp.degraded_mode,
-                )
-                mcp_observation = cve_adapter.query("scan_dependencies", first_dep.identifiers)
-                self.artifacts.write_json("intelligence", "cve-mcp-observation.json", mcp_observation.to_dict(), mcp_task)
-                intelligence.append(
-                    normalize_cve_mcp_output(
-                        {
-                            "cwe_ids": ["CWE-89"],
-                            "references": [],
-                            "risk_score": 0,
-                            "mcp_degraded": mcp_observation.degraded,
-                        },
-                        query={"dependency": first_dep.name},
-                    )
-                )
-            self._finish_task(mcp_task, output_refs=[item.id or "" for item in intelligence])
+                self._record_message(msg.message_id, mcp_task)
+            self._finish_task(
+                mcp_task,
+                output_refs=[
+                    dependency_run.tool_result.id or "",
+                    *[item.id or "" for item in intelligence],
+                ],
+            )
 
         recon_task = self._start_task("recon", "agent")
         recon_output = self._invoke_agent("recon", recon_task, {"metadata": metadata, "intelligence": intelligence})
@@ -966,9 +1049,11 @@ class AgentRuntime:
             in {VerificationStatus.CONFIRMED, VerificationStatus.LIKELY, VerificationStatus.MANUAL_REQUIRED}
         ]
 
-        runtime_summary = {}
+        runtime_summary = {
+            "dependency_intelligence": dependency_intelligence_summary,
+        }
         if config.runtime_enabled:
-            runtime_summary = {
+            runtime_summary.update({
                 "llm": {"provider": config.llm.provider, "model": config.llm.model},
                 "prompts": {"version": config.prompts.default_version, "count": len(self.runtime_refs["prompt_refs"])},
                 "mcp": {"enabled": config.mcp.enabled, "transport": config.mcp.transport, "refs": self.runtime_refs["mcp_call_refs"]},
@@ -1010,7 +1095,7 @@ class AgentRuntime:
                         for ref in result.sandbox_result_refs
                     ],
                 },
-            }
+            })
 
         self._emit_phase("reporting")
         reporting_task = self._start_task("reporting", "service")
@@ -1455,6 +1540,7 @@ class _GraphAuditExecution:
         self.memory_retrievals = []
         self.scan_results = []
         self.intelligence = []
+        self.dependency_intelligence_summary = summary_without_dependencies()
         self.recon = None
         self.analysis = None
         self.candidates = []
@@ -1903,7 +1989,12 @@ class _GraphAuditExecution:
         pattern = self.runtime.tool_broker.dispatch(
             "analysis", "pattern-scan", {}, metadata=self.metadata, task_state=task
         )
-        self.scan_results = [dataflow, pattern]
+        dependency_results = [
+            item
+            for item in self.scan_results
+            if item.tool_name == "dependency-intelligence"
+        ]
+        self.scan_results = [dataflow, pattern, *dependency_results]
         paths = [
             self.runtime.artifacts.write_json("tool_outputs", "dataflow-scan.json", dataflow.to_dict(), task),
             self.runtime.artifacts.write_json("tool_outputs", "pattern-scan.json", pattern.to_dict(), task),
@@ -1961,56 +2052,45 @@ class _GraphAuditExecution:
         if not self.metadata.dependencies:
             return GraphNodeResult(outputs={"intelligence": self.intelligence})
         task = self._task_for(node)
-        first_dep = self.metadata.dependencies[0]
-        artifact_refs = []
-        if self.config.runtime_enabled and self.config.mcp.enabled:
-            client = CveMcpClient(
-                self.config.mcp.command,
-                self.config.mcp.timeout_seconds,
-                self.config.mcp.query_budget,
-                allowed_tools=(
-                    self.config.mcp.allowed_tools
-                    or self.config.integration.safe_cve_mcp_tools
-                ),
-                cwd=self.config.mcp.working_dir,
-                env=self.config.mcp.env,
-            )
-            intelligence = client.scan_dependency(first_dep.identifiers)
-            self.intelligence.append(intelligence)
-            path = self.runtime.artifacts.write_json(
-                "mcp", "cve-mcp-intelligence.json", intelligence.to_dict(), task
-            )
-            artifact_refs.append(path)
-            self.runtime.runtime_refs["mcp_call_refs"].append(intelligence.id or "")
-        else:
-            adapter = CveMcpAdapter(
-                enabled=self.config.cve_mcp.enabled,
-                command=self.config.cve_mcp.command,
-                endpoint=self.config.cve_mcp.endpoint,
-                env=self.config.cve_mcp.env,
-                timeout=self.config.cve_mcp.timeout_seconds,
-                query_budget=self.config.cve_mcp.query_budget,
-                degraded_mode=self.config.cve_mcp.degraded_mode,
-            )
-            observation = adapter.query("scan_dependencies", first_dep.identifiers)
-            path = self.runtime.artifacts.write_json(
-                "intelligence", "cve-mcp-observation.json", observation.to_dict(), task
-            )
-            artifact_refs.append(path)
-            self.intelligence.append(
-                normalize_cve_mcp_output(
-                    {
-                        "cwe_ids": ["CWE-89"],
-                        "references": [],
-                        "risk_score": 0,
-                        "mcp_degraded": observation.degraded,
-                    },
-                    query={"dependency": first_dep.name},
-                )
-            )
+        dependency_run = _run_dependency_intelligence(
+            self.config,
+            self.metadata,
+            self.runtime.run.path,
+        )
+        self.intelligence = list(dependency_run.intelligence)
+        self.dependency_intelligence_summary = dependency_run.summary
+        records_path = self.runtime.artifacts.write_json(
+            "mcp" if self.config.runtime_enabled else "intelligence",
+            "dependency-intelligence-records.json",
+            [item.to_dict() for item in self.intelligence],
+            task,
+        )
+        summary_path = self.runtime.artifacts.write_json(
+            "intelligence",
+            "dependency-intelligence-summary.v1.json",
+            dependency_run.summary,
+            task,
+        )
+        tool_path = self.runtime.artifacts.write_json(
+            "tool_outputs",
+            "dependency-intelligence.json",
+            dependency_run.tool_result.to_dict(),
+            task,
+        )
+        dependency_run.tool_result.artifact_paths.extend(
+            [records_path, summary_path, tool_path]
+        )
+        self.scan_results = [
+            item for item in self.scan_results
+            if item.tool_name != "dependency-intelligence"
+        ]
+        self.scan_results.append(dependency_run.tool_result)
+        self.runtime.runtime_refs["mcp_call_refs"].extend(
+            item.id or "" for item in self.intelligence
+        )
         return GraphNodeResult(
             outputs={"intelligence": self.intelligence},
-            artifact_refs=artifact_refs,
+            artifact_refs=[records_path, summary_path, tool_path],
         )
 
     def _checkpoint(self, node, inputs: dict[str, Any]) -> GraphNodeResult:
@@ -2275,6 +2355,7 @@ class _GraphAuditExecution:
             }
         ]
         runtime_summary = {
+            "dependency_intelligence": self.dependency_intelligence_summary,
             "kernel": {
                 "name": "AgentRuntime",
                 "state_ref": str(self.runtime.run.path / "runtime_state" / "state.json"),

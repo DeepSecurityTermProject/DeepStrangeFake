@@ -110,6 +110,54 @@ class ToolRuntimeConfig:
 
 
 @dataclass
+class DependencyIntelligenceConfig:
+    enabled: bool = True
+    batch_size: int = 20
+    query_budget: int = 50
+    cache_policy: str = "persistent"
+    cache_path: str = ".audit-cache/dependency-intelligence.v1.json"
+    cache_ttl_seconds: int = 86_400
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ValueError("dependency_intelligence.batch_size must be positive")
+        if self.batch_size > 1000:
+            raise ValueError("dependency_intelligence.batch_size must be at most 1000")
+        if self.query_budget < 0:
+            raise ValueError("dependency_intelligence.query_budget must not be negative")
+        if self.cache_policy not in {"disabled", "per-run", "persistent"}:
+            raise ValueError(
+                "dependency_intelligence.cache_policy must be disabled, per-run, or persistent"
+            )
+        if self.cache_ttl_seconds < 0:
+            raise ValueError("dependency_intelligence.cache_ttl_seconds must not be negative")
+
+    @classmethod
+    def from_environment(
+        cls,
+        env: dict[str, str] | None = None,
+    ) -> "DependencyIntelligenceConfig":
+        values = env or os.environ
+        enabled_value = values.get("AUDIT_DEPENDENCY_INTELLIGENCE_ENABLED")
+        enabled = True if enabled_value is None else enabled_value.strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        return cls(
+            enabled=enabled,
+            batch_size=int(values.get("AUDIT_DEPENDENCY_BATCH_SIZE", cls.batch_size)),
+            query_budget=int(values.get("AUDIT_DEPENDENCY_QUERY_BUDGET", cls.query_budget)),
+            cache_policy=values.get("AUDIT_DEPENDENCY_CACHE_POLICY", cls.cache_policy),
+            cache_path=values.get("AUDIT_DEPENDENCY_CACHE_PATH", cls.cache_path),
+            cache_ttl_seconds=int(
+                values.get("AUDIT_DEPENDENCY_CACHE_TTL_SECONDS", cls.cache_ttl_seconds)
+            ),
+        )
+
+
+@dataclass
 class MemoryRuntimeConfig:
     enabled: bool = True
     mode: str = "lexical"
@@ -199,6 +247,7 @@ class AuditScope:
             "command-injection",
             "path-traversal",
             "hardcoded-secret",
+            "dependency-vulnerability",
         ]
     )
     include_patterns: list[str] = field(default_factory=list)
@@ -308,6 +357,9 @@ class AuditConfig:
     mcp: McpRuntimeConfig = field(default_factory=McpRuntimeConfig)
     integration: IntegrationConfig = field(default_factory=IntegrationConfig)
     tools: ToolRuntimeConfig = field(default_factory=ToolRuntimeConfig)
+    dependency_intelligence: DependencyIntelligenceConfig = field(
+        default_factory=DependencyIntelligenceConfig
+    )
     memory: MemoryRuntimeConfig = field(default_factory=MemoryRuntimeConfig)
     message_bus: MessageBusConfig = field(default_factory=MessageBusConfig)
     llm_decisions: LlmDecisionRuntimeConfig = field(default_factory=LlmDecisionRuntimeConfig)
@@ -316,8 +368,8 @@ class AuditConfig:
     audit_scope: AuditScope = field(default_factory=AuditScope)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     tool_permissions: ToolPermissions = field(default_factory=ToolPermissions)
-    remote_acquisition: RemoteAcquisitionConfig = field(default_factory=RemoteAcquisitionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    remote_acquisition: RemoteAcquisitionConfig = field(default_factory=RemoteAcquisitionConfig)
     validation_levels: list[str] = field(
         default_factory=lambda: ["static-only", "poc-generate", "sandbox", "manual"]
     )
@@ -328,6 +380,7 @@ class AuditConfig:
     def default(cls) -> "AuditConfig":
         return cls(
             remote_acquisition=RemoteAcquisitionConfig.from_environment(),
+            dependency_intelligence=DependencyIntelligenceConfig.from_environment(),
         )
 
     @classmethod
@@ -355,6 +408,12 @@ class AuditConfig:
             mcp=McpRuntimeConfig(**_known_kwargs(McpRuntimeConfig, data.get("mcp", data.get("cve_mcp", {})))),
             integration=IntegrationConfig(**_known_kwargs(IntegrationConfig, data.get("integration", {}))),
             tools=ToolRuntimeConfig(**_known_kwargs(ToolRuntimeConfig, data.get("tools", {}))),
+            dependency_intelligence=DependencyIntelligenceConfig(
+                **_known_kwargs(
+                    DependencyIntelligenceConfig,
+                    data.get("dependency_intelligence", {}),
+                )
+            ),
             memory=MemoryRuntimeConfig(**_known_kwargs(MemoryRuntimeConfig, data.get("memory", {}))),
             message_bus=MessageBusConfig(**_known_kwargs(MessageBusConfig, data.get("message_bus", {}))),
             llm_decisions=llm_decisions,
@@ -363,10 +422,10 @@ class AuditConfig:
             audit_scope=AuditScope(**_known_kwargs(AuditScope, data.get("audit_scope", {}))),
             sandbox=SandboxConfig(**_known_kwargs(SandboxConfig, data.get("sandbox", {}))),
             tool_permissions=ToolPermissions(**_known_kwargs(ToolPermissions, data.get("tool_permissions", {}))),
+            output=OutputConfig(**_known_kwargs(OutputConfig, data.get("output", {}))),
             remote_acquisition=RemoteAcquisitionConfig(
                 **_known_kwargs(RemoteAcquisitionConfig, data.get("remote_acquisition", {}))
             ),
-            output=OutputConfig(**_known_kwargs(OutputConfig, data.get("output", {}))),
             validation_levels=data.get(
                 "validation_levels", ["static-only", "poc-generate", "sandbox", "manual"]
             ),

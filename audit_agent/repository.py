@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import fnmatch
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -194,6 +195,28 @@ def _discover_dependencies(root: Path, file_tree: list[str]) -> list[Dependency]
                 name, version = parsed
                 dependencies.append(_dependency("pypi", name, version, manifest, root))
 
+    for manifest in [path for path in manifest_paths if path.name == "pyproject.toml"]:
+        try:
+            with manifest.open("rb") as handle:
+                payload = tomllib.load(handle)
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        project = payload.get("project", {})
+        requirement_groups = [project.get("dependencies", [])]
+        optional = project.get("optional-dependencies", {})
+        if isinstance(optional, dict):
+            requirement_groups.extend(optional.values())
+        for group in requirement_groups:
+            if not isinstance(group, list):
+                continue
+            for requirement in group:
+                if not isinstance(requirement, str):
+                    continue
+                parsed = _parse_requirement(requirement)
+                if parsed:
+                    name, version = parsed
+                    dependencies.append(_dependency("pypi", name, version, manifest, root))
+
     for manifest in [path for path in manifest_paths if path.name == "package.json"]:
         try:
             payload = json.loads(manifest.read_text(encoding="utf-8"))
@@ -230,7 +253,11 @@ def _parse_requirement(line: str) -> tuple[str, str | None] | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("#") or stripped.startswith("-"):
         return None
-    match = re.match(r"^([A-Za-z0-9_.-]+)\s*([<>=!~].*)?$", stripped)
+    requirement = stripped.split(";", 1)[0].strip()
+    match = re.match(
+        r"^([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*([<>=!~].*)?$",
+        requirement,
+    )
     if not match:
         return None
     name = match.group(1)
