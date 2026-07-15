@@ -48,6 +48,11 @@ JSON/Markdown reports, message logs, and `runtime_state/state.json`.
 
 ## Local Web Backend
 
+The project-centric catalog, scan wizard, live/replay workspace, security
+dashboard, storage layout, migration, SSE recovery, retention, rollback and
+first-release boundaries are documented in
+[`docs/project-console.md`](project-console.md).
+
 Start the FastAPI backend for local demos and the web UI:
 
 ```powershell
@@ -176,13 +181,13 @@ npm run dev -- --port 18173
 
 The UI supports:
 
-- creating scan runs with target, runtime, provider, LLM decisions, memory, MCP,
-  validation, Docker sandbox, and bounded LLM PoC repair controls;
-- browsing queued, running, succeeded, degraded, cancelled, and failed jobs;
-- opening run details with Summary, Findings, Runtime Tasks, Replay, and
-  Markdown Report tabs;
-- polling run status until a terminal status, then loading runtime,
-  replay, and report artifacts.
+- managing durable local/public-repository projects and repeated scan history;
+- creating real scans through source preflight and a three-step review wizard;
+- monitoring persisted Agent, tool, evidence, validation, budget and lifecycle
+  events through SSE with visible polling fallback and replay;
+- inspecting project risk, confirmed/candidate separation, scan quality,
+  cross-run finding trends and high-risk evidence drill-down;
+- retaining the global run list and compatible legacy run links.
 
 Run frontend verification:
 

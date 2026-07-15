@@ -26,6 +26,7 @@ ACQUISITION_SCHEMA_VERSION = "repository-acquisition.v1"
 PREPARED_TARGET_SCHEMA_VERSION = "prepared-audit-target.v1"
 COMMIT_RE = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
 PATH_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+REVISION_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$")
 REMOTE_HOST_KINDS = {"github.com": "github", "gitlab.com": "gitlab"}
 
 
@@ -207,6 +208,78 @@ def normalize_revision(revision: str | None) -> str:
     if not COMMIT_RE.fullmatch(value):
         raise AcquisitionError("revision-policy-denied", "revision must be HEAD or a complete commit object ID")
     return value.lower()
+
+
+def resolve_remote_revision(
+    source: str,
+    *,
+    revision: str | None,
+    revision_type: str,
+    config: RemoteAcquisitionConfig,
+    command_runner: GitCommandRunner | None = None,
+) -> tuple[str, str, str]:
+    """Resolve a safe public branch/tag/default selector to an immutable commit."""
+    normalized_source = normalize_remote_source(source, config.allowed_hosts)
+    selector_type = str(revision_type or "default").strip().lower()
+    if selector_type not in {"default", "branch", "tag", "commit"}:
+        raise AcquisitionError("revision-policy-denied", "unsupported revision type")
+    selected = (revision or "").strip()
+    if selector_type == "default":
+        if selected:
+            raise AcquisitionError("revision-policy-denied", "default revision cannot include a name")
+        requested = "HEAD"
+        refs = ["HEAD"]
+    elif selector_type == "commit":
+        requested = normalize_revision(selected)
+        if requested == "HEAD":
+            raise AcquisitionError("revision-policy-denied", "commit selector requires a full object ID")
+        refs = ["HEAD"]
+    else:
+        _validate_named_revision(selected)
+        requested = selected
+        if selector_type == "branch":
+            refs = [f"refs/heads/{selected}"]
+        else:
+            refs = [f"refs/tags/{selected}", f"refs/tags/{selected}^{{}}"]
+    if not config.enabled:
+        raise AcquisitionError("remote-acquisition-disabled")
+    if not config.network_enabled:
+        raise AcquisitionError("remote-preflight-network-disabled")
+    runner = command_runner or run_git_command
+    outcome = runner(
+        _hardened_git_argv(["ls-remote", "--exit-code", normalized_source, *refs]),
+        None,
+        _minimal_git_environment(),
+        config.command_timeout_seconds,
+    )
+    if outcome.timed_out:
+        raise AcquisitionError("remote-preflight-timeout")
+    if outcome.returncode != 0:
+        raise AcquisitionError("remote-revision-unavailable", outcome.stderr)
+    lines = [line.split() for line in outcome.stdout.splitlines() if line.strip()]
+    candidates = [(parts[0], parts[1]) for parts in lines if len(parts) >= 2 and COMMIT_RE.fullmatch(parts[0])]
+    if selector_type == "commit":
+        resolved = requested
+    elif selector_type == "tag":
+        peeled = [sha for sha, ref in candidates if ref.endswith("^{}")]
+        resolved = (peeled or [sha for sha, _ref in candidates])[0] if candidates else ""
+    else:
+        resolved = candidates[0][0] if candidates else ""
+    if not COMMIT_RE.fullmatch(resolved):
+        raise AcquisitionError("remote-revision-invalid")
+    return normalized_source, requested, resolved.lower()
+
+
+def _validate_named_revision(value: str) -> None:
+    if (
+        not REVISION_NAME_RE.fullmatch(value)
+        or ".." in value
+        or "@{" in value
+        or value.endswith((".", "/"))
+        or value.startswith("/")
+        or "//" in value
+    ):
+        raise AcquisitionError("revision-policy-denied", "branch or tag name is unsafe")
 
 
 def acquisition_cache_key(normalized_source: str) -> str:

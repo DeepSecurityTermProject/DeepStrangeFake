@@ -10,6 +10,7 @@ McpMode = Literal["on", "off", "degraded"]
 ValidationLevel = Literal["static-only", "poc-generate", "sandbox", "manual"]
 SandboxRunner = Literal["local", "docker"]
 GraphMode = Literal["agent-led", "legacy", "deterministic-graph", "adaptive-graph"]
+RevisionType = Literal["default", "branch", "tag", "commit"]
 
 
 class StrictModel(BaseModel):
@@ -60,6 +61,8 @@ class ScanRunRequest(StrictModel):
     exclude_patterns: list[str] | None = None
     output: str | None = None
     resume_run_id: str | None = None
+    project_id: str | None = None
+    preflight_token: str | None = None
 
     @model_validator(mode="after")
     def normalize_source(self):
@@ -104,10 +107,13 @@ class CreateRunResponse(StrictModel):
     job_id: str
     status: str
     status_url: str
+    project_id: str | None = None
+    run_url: str | None = None
 
 
 class JobStatusResponse(StrictModel):
     job_id: str
+    project_id: str | None = None
     target: str
     status: str
     created_at: str
@@ -128,3 +134,75 @@ class JobStatusResponse(StrictModel):
 
 class JobListResponse(StrictModel):
     jobs: list[JobStatusResponse]
+    total: int | None = None
+    limit: int | None = None
+    offset: int | None = None
+    has_more: bool | None = None
+
+
+class SourcePreflightRequest(StrictModel):
+    source: SourceSpec
+    revision_type: RevisionType = "default"
+    revision: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def validate_revision_selection(self):
+        if isinstance(self.source, LocalSource):
+            if self.revision or self.revision_type != "default":
+                raise ValueError("local sources do not accept a revision selector")
+        if isinstance(self.source, (GitHubSource, GitLabSource)) and self.source.commit:
+            if self.revision:
+                raise ValueError("provide either source.commit or revision, not both")
+            self.revision_type = "commit"
+            self.revision = self.source.commit
+        return self
+
+
+class SourcePreflightResponse(StrictModel):
+    preflight_token: str
+    expires_at: str
+    source: dict
+    source_identity: str
+    source_display: str
+    suggested_name: str
+    revision_type: str
+    requested_revision: str | None = None
+    resolved_commit: str | None = None
+    policy_version: str
+    languages: list[dict] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    existing_project_id: str | None = None
+
+
+class ProjectCreateRequest(StrictModel):
+    preflight_token: str = Field(min_length=16)
+    source: SourceSpec
+    display_name: str | None = Field(default=None, max_length=200)
+
+
+class ProjectUpdateRequest(StrictModel):
+    display_name: str = Field(min_length=1, max_length=200)
+
+
+class ProjectResponse(StrictModel):
+    project_id: str
+    display_name: str
+    source_kind: str
+    source: dict
+    source_identity: str
+    source_display: str
+    status: str
+    languages: list[dict] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+    archived_at: str | None = None
+    latest_run: JobStatusResponse | None = None
+
+
+class ProjectListResponse(StrictModel):
+    projects: list[ProjectResponse]
+    total: int
+    limit: int | None = None
+    offset: int | None = None
+    has_more: bool | None = None

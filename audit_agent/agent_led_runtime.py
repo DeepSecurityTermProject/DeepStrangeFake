@@ -534,7 +534,22 @@ class AgentLedInvestigationCoordinator:
             self.hypotheses[hypothesis.hypothesis_id or ""] = hypothesis
             existing_keys.add(key)
             self.budget.hypotheses += 1
-            self._persist_hypothesis(hypothesis)
+            hypothesis_ref = self._persist_hypothesis(hypothesis)
+            self._publish_investigation_event(
+                "investigation.hypothesis",
+                {
+                    "role": "analysis",
+                    "hypothesis_id": hypothesis.hypothesis_id,
+                    "vulnerability_class": hypothesis.vulnerability_class,
+                    "claim": hypothesis.claim,
+                    "rationale_summary": hypothesis.rationale,
+                    "target_paths": hypothesis.target_paths,
+                    "confidence": hypothesis.confidence,
+                    "state": hypothesis.state,
+                    "evidence_count": len(hypothesis.evidence),
+                },
+                [hypothesis_ref],
+            )
             self._checkpoint("hypothesis-proposed")
             if "next_action" in proposal:
                 action = proposal["next_action"]
@@ -604,7 +619,22 @@ class AgentLedInvestigationCoordinator:
                 else:
                     hypothesis.transition("evidence-gate")
                     self._gate(hypothesis)
-            self._persist_hypothesis(hypothesis)
+            hypothesis_ref = self._persist_hypothesis(hypothesis)
+            self._publish_investigation_event(
+                "investigation.hypothesis",
+                {
+                    "role": "analysis",
+                    "hypothesis_id": hypothesis.hypothesis_id,
+                    "vulnerability_class": hypothesis.vulnerability_class,
+                    "claim": hypothesis.claim,
+                    "rationale_summary": hypothesis.rationale,
+                    "target_paths": hypothesis.target_paths,
+                    "confidence": hypothesis.confidence,
+                    "state": hypothesis.state,
+                    "evidence_count": len(hypothesis.evidence),
+                },
+                [hypothesis_ref],
+            )
             self._checkpoint("investigation-step")
 
     def _gate(self, hypothesis: InvestigationHypothesis) -> None:
@@ -637,6 +667,17 @@ class AgentLedInvestigationCoordinator:
         )
         self.gate_refs.append(gate_ref)
         hypothesis_ref = self._persist_hypothesis(hypothesis)
+        self._publish_investigation_event(
+            "investigation.evidence-gate",
+            {
+                "role": "verification",
+                "hypothesis_id": hypothesis.hypothesis_id,
+                "gate_id": result.decision.gate_id,
+                "state": result.decision.state,
+                "evidence_count": len(hypothesis.evidence),
+            },
+            [gate_ref, *([package_ref] if package_ref else [])],
+        )
         if result.finding and result.evidence_package:
             result.finding.metadata.update(
                 {
@@ -1153,6 +1194,18 @@ class AgentLedInvestigationCoordinator:
         )
         self.steps.append(step)
         self.step_refs.append(ref)
+        self._publish_investigation_event(
+            "investigation.action",
+            {
+                "role": "analysis",
+                "hypothesis_id": step.hypothesis_id,
+                "action": step.action,
+                "status": step.status,
+                "evidence_count": len(step.observation_refs),
+                "message": step.message,
+            },
+            [ref],
+        )
         return ref
 
     def _checkpoint(self, reason: str) -> str:
@@ -1189,7 +1242,33 @@ class AgentLedInvestigationCoordinator:
         )
         temporary.replace(state_path)
         self.runtime.run_state.record_artifact(state_path)
+        self._publish_investigation_event(
+            "investigation.budget",
+            {
+                "role": "orchestrator",
+                "checkpoint": checkpoint.sequence,
+                "reason": reason,
+                "remaining": checkpoint.remaining_budget,
+            },
+            [ref, str(state_path)],
+        )
         return ref
+
+    def _publish_investigation_event(
+        self,
+        message_type: str,
+        payload: dict[str, Any],
+        refs: list[str] | None = None,
+    ) -> None:
+        if self.runtime.bus is None:
+            return
+        self.runtime.bus.publish(
+            "agent-led-investigation",
+            "runtime",
+            message_type,
+            payload,
+            artifact_refs=[item for item in (refs or []) if item],
+        )
 
     def _terminalize_response(self, response, accepted: bool, refs, reason: str = "") -> None:
         if not response or not self.gateway:

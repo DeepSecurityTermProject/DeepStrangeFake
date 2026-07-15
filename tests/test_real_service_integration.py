@@ -114,6 +114,36 @@ class RealServiceIntegrationTests(unittest.TestCase):
                 env={"AUDIT_AGENT_LLM_RESPONSE_FORMAT": "free-form"},
             )
 
+    def test_dotenv_investigation_token_budget_is_effective_without_llm_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_file = root / ".env"
+            env_file.write_text(
+                "AUDIT_AGENT_INVESTIGATION_TOKEN_BUDGET=300000\n",
+                encoding="utf-8",
+            )
+            config = AuditConfig.default()
+            config.integration.env_file = str(env_file)
+
+            load_integration_environment(config, cwd=root, env={})
+
+            self.assertEqual(config.investigation.token_budget, 300_000)
+            self.assertEqual(config.llm.token_budget, 300_000)
+
+    def test_explicit_llm_token_budget_remains_the_stricter_limit(self):
+        config = AuditConfig.default()
+
+        load_integration_environment(
+            config,
+            env={
+                "AUDIT_AGENT_INVESTIGATION_TOKEN_BUDGET": "300000",
+                "AUDIT_AGENT_LLM_TOKEN_BUDGET": "250000",
+            },
+        )
+
+        self.assertEqual(config.investigation.token_budget, 300_000)
+        self.assertEqual(config.llm.token_budget, 250_000)
+
     def test_redaction_removes_secret_keys_and_values_recursively(self):
         payload = {
             "Authorization": "Bearer secret-token",

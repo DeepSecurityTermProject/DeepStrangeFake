@@ -145,4 +145,8 @@ class ScanJobRunner:
         )
         if accepts_kwargs or "cancellation_token" in signature.parameters:
             kwargs["cancellation_token"] = self._tokens.setdefault(web_job_id, CancellationToken())
+        if accepts_kwargs or "public_event_callback" in signature.parameters:
+            kwargs["public_event_callback"] = (
+                lambda message: self.job_store.project_runtime_message(web_job_id, message)
+            )
         return self.run_audit_func(target, config, output_dir, **kwargs)

@@ -19,6 +19,7 @@ fixtures/
 !benchmarks/fixtures/**
 .benchmark-*-runs*/
 .benchmark-cache/
+.audit-cache/
 .benchmark-test-cache/
 benchmark-runs/
 benchmark-ci-runs/

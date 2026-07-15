@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { StatusBadge } from "../components/StatusBadge";
 import type { AuditReport, JobStatusResponse, ReplaySummary, ReportFinding, RuntimeState } from "../api/types";
@@ -19,10 +19,19 @@ interface RunDetailTabsProps {
   replaySummary?: ReplaySummary;
   reportJson?: AuditReport;
   markdownReport?: string;
+  focusFindingId?: string;
 }
 
-export function RunDetailTabs({ job, runtimeState, replaySummary, reportJson, markdownReport }: RunDetailTabsProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("summary");
+export function RunDetailTabs({ job, runtimeState, replaySummary, reportJson, markdownReport, focusFindingId }: RunDetailTabsProps) {
+  const [activeTab, setActiveTab] = useState<TabId>(() => focusFindingId ? "findings" : "summary");
+
+  useEffect(() => {
+    if (!focusFindingId || activeTab !== "findings" || !reportJson) return;
+    const element = document.getElementById(findingDomId(focusFindingId));
+    if (!element) return;
+    element.scrollIntoView?.({ block: "center" });
+    element.focus({ preventScroll: true });
+  }, [activeTab, focusFindingId, reportJson]);
 
   return (
     <div className="detail-tabs">
@@ -42,7 +51,7 @@ export function RunDetailTabs({ job, runtimeState, replaySummary, reportJson, ma
       </div>
       <div className="tab-panel">
         {activeTab === "summary" && <SummaryTab job={job} reportJson={reportJson} />}
-        {activeTab === "findings" && <FindingsTab reportJson={reportJson} />}
+        {activeTab === "findings" && <FindingsTab reportJson={reportJson} focusFindingId={focusFindingId} />}
         {activeTab === "runtime" && <RuntimeTasksTab runtimeState={runtimeState} />}
         {activeTab === "replay" && <ReplayTab replaySummary={replaySummary} />}
         {activeTab === "markdown" && <MarkdownReportTab markdownReport={markdownReport} />}
@@ -118,7 +127,7 @@ function formatBudget(value?: Record<string, unknown>): string {
     .join(", ") || "recorded";
 }
 
-function FindingsTab({ reportJson }: { reportJson?: AuditReport }) {
+function FindingsTab({ reportJson, focusFindingId }: { reportJson?: AuditReport; focusFindingId?: string }) {
   const findings = reportJson?.verification_candidates ?? reportJson?.findings ?? [];
   if (!reportJson) {
     return <EmptyState title="Report JSON is not available" />;
@@ -129,7 +138,13 @@ function FindingsTab({ reportJson }: { reportJson?: AuditReport }) {
   return (
     <div className="finding-list">
       {findings.map((finding, index) => (
-        <article className="finding-item" key={finding.id ?? `${finding.title}-${index}`}>
+        <article
+          id={finding.id ? findingDomId(finding.id) : undefined}
+          className={`finding-item ${finding.id === focusFindingId ? "finding-focused" : ""}`}
+          aria-current={finding.id === focusFindingId ? "true" : undefined}
+          tabIndex={finding.id === focusFindingId ? -1 : undefined}
+          key={finding.id ?? `${finding.title}-${index}`}
+        >
           <div className="finding-heading">
             <div>
               <h3>{finding.title ?? "Untitled finding"}</h3>
@@ -355,4 +370,8 @@ function formatLocation(location?: { path?: string; start_line?: number; end_lin
   }
   const line = location.start_line ? `:${location.start_line}` : "";
   return `${location.path}${line}`;
+}
+
+function findingDomId(findingId: string): string {
+  return `finding-${findingId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 }

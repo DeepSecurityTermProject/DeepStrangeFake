@@ -68,6 +68,48 @@ describe("apiClient", () => {
     );
   });
 
+  it("loads project-scoped event snapshots and safe rerun configuration", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ schema_version: "audit-event.v1", run_id: "JOB-1", events: [], last_event_id: 0, history_status: "live" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ source_run_id: "JOB-1", project_id: "PRJ-1", configuration: { graph_mode: "agent-led" } }), { status: 200 }));
+
+    await expect(apiClient.getRunEventSnapshot("PRJ-1", "JOB-1")).resolves.toMatchObject({ run_id: "JOB-1" });
+    await expect(apiClient.getRerunConfiguration("JOB-1")).resolves.toMatchObject({ project_id: "PRJ-1" });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/projects/PRJ-1/runs/JOB-1/events/snapshot");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/runs/JOB-1/rerun-config");
+  });
+
+  it("preflights sources and submits project-scoped runs without credential fields", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ preflight_token: "opaque", source: { kind: "github", url: "https://github.com/acme/repo", commit: "a".repeat(40) } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ job_id: "JOB-2", project_id: "PRJ-1", status: "queued", status_url: "/api/runs/JOB-2", run_url: "/projects/PRJ-1/runs/JOB-2" }), { status: 202 }));
+
+    const preview = await apiClient.preflightSource({
+      source: { kind: "github", url: "https://github.com/acme/repo" },
+      revision_type: "branch",
+      revision: "main"
+    });
+    await expect(apiClient.createProjectRun("PRJ-1", {
+      source: preview.source,
+      preflight_token: preview.preflight_token
+    })).resolves.toMatchObject({ project_id: "PRJ-1", job_id: "JOB-2" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/sources/preflight");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/projects/PRJ-1/runs");
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toMatch(/password|api_key|credential/i);
+  });
+
+  it("encodes project catalog filters", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ projects: [], total: 0 }), { status: 200 }));
+
+    await apiClient.listProjects({ query: "course repo", status: "archived", security_status: "degraded", order: "name" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects?query=course+repo&status=archived&security_status=degraded&order=name", undefined);
+  });
+
   it("throws a readable error for failed responses", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ detail: { error: "job-not-found" } }), { status: 404 })

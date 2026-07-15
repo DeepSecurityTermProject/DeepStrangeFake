@@ -49,7 +49,7 @@ from .llm_accounting import AuditedLLMGateway, LifecycleLedger, reconcile_llm_li
 from .mcp_client import CveMcpClient  # Compatibility import for existing runtime patch points.
 from .memory import LexicalMemoryStore, MemoryIndexer, persist_retrievals
 from .message_bus import MessageBus
-from .models import LLMRequest, PromptRenderRecord, ToolCallResult, stable_id, to_plain, utc_now
+from .models import LLMRequest, MessageEnvelope, PromptRenderRecord, ToolCallResult, stable_id, to_plain, utc_now
 from .prompts import persist_prompt, render_default_prompt
 from .redaction import redact_secrets, redact_text
 from .reporting import ReportGenerator
@@ -680,6 +680,7 @@ class AgentRuntime:
         progress_callback=None,
         cancellation_token: CancellationToken | None = None,
         resume_run_id: str | None = None,
+        public_event_callback: Callable[[MessageEnvelope], None] | None = None,
     ):
         self.config = config or AuditConfig.default()
         self.output_dir = output_dir
@@ -687,6 +688,7 @@ class AgentRuntime:
         self.progress_callback = progress_callback
         self.cancellation_token = cancellation_token or CancellationToken()
         self.resume_run_id = resume_run_id
+        self.public_event_callback = public_event_callback
         self.run: RunContext | None = None
         self.run_state: RunState | None = None
         self.artifacts: ArtifactStore | None = None
@@ -1343,6 +1345,15 @@ class AgentRuntime:
                 self.run.path / "messages" / self.config.message_bus.log_filename,
                 secret_values=[os.environ.get(self.config.llm.api_key_env, "")],
             )
+            if self.public_event_callback:
+                def project_public_event(message: MessageEnvelope) -> None:
+                    try:
+                        self.public_event_callback(message)
+                    except Exception:
+                        # Public UI projection is observational and cannot change audit execution.
+                        return
+
+                bus.subscribe("*", project_public_event)
             msg = bus.publish("pipeline", "orchestrator", "run.start", {"target": target})
             self.runtime_refs["message_refs"].append(msg.message_id)
             return bus

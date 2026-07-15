@@ -1,0 +1,37 @@
+{
+  "schema_version": "legacy-web-api-contract.v1",
+  "create_run_fields": [
+    "job_id",
+    "status",
+    "status_url"
+  ],
+  "job_status_fields": [
+    "job_id",
+    "target",
+    "status",
+    "created_at",
+    "started_at",
+    "finished_at",
+    "output_dir",
+    "run_dir",
+    "summary",
+    "error",
+    "source",
+    "phase",
+    "requested_revision",
+    "resolved_commit",
+    "acquisition_summary",
+    "acquisition_ref",
+    "cleanup_status"
+  ],
+  "artifact_endpoints": [
+    "runtime-state",
+    "replay-summary",
+    "reports/report.json",
+    "reports/report.md"
+  ],
+  "additive_fields": [
+    "project_id",
+    "run_url"
+  ]
+}

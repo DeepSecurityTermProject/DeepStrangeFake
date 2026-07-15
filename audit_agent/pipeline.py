@@ -5,6 +5,7 @@ from typing import Callable
 import json
 
 from .config import AuditConfig
+from .models import MessageEnvelope
 from .runtime import AgentRuntime, CancellationToken
 from .resource_summary import build_failed_run_resource_summary
 from .repository_acquisition import (
@@ -25,6 +26,7 @@ def run_audit(
     progress_callback: Callable[[str], None] | None = None,
     cancellation_token: CancellationToken | None = None,
     resume_run_id: str | None = None,
+    public_event_callback: Callable[[MessageEnvelope], None] | None = None,
 ) -> dict:
     """Backward-compatible pipeline entrypoint backed by the runtime kernel."""
     selected_config = config or AuditConfig.default()
@@ -34,6 +36,7 @@ def run_audit(
         progress_callback=progress_callback,
         cancellation_token=cancellation_token,
         resume_run_id=resume_run_id,
+        public_event_callback=public_event_callback,
     )
     service = acquisition_service or RepositoryAcquisitionService(
         selected_config.remote_acquisition

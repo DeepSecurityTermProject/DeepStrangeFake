@@ -63,7 +63,7 @@ export function RunListPage() {
                   <td>{String(job.summary?.validated_count ?? 0)}</td>
                   <td>{formatTime(job.created_at)}</td>
                   <td>
-                    <Link to={`/runs/${job.job_id}`}>Open</Link>
+                    <Link className="inline-link" to={job.project_id ? `/projects/${job.project_id}/runs/${job.job_id}` : `/runs/${job.job_id}`}>Open</Link>
                   </td>
                 </tr>
               ))}

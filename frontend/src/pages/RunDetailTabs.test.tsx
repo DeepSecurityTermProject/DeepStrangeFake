@@ -82,6 +82,33 @@ describe("RunDetailTabs", () => {
     expect(screen.getByText(/markdown report is not available/i)).toBeInTheDocument();
   });
 
+  it("opens and focuses a finding supplied by dashboard drill-down", () => {
+    render(
+      <RunDetailTabs
+        job={job}
+        focusFindingId="F-focus"
+        reportJson={{
+          verification_candidates: [
+            {
+              id: "F-focus",
+              title: "Focused command injection",
+              vulnerability_class: "command-injection",
+              severity: "critical",
+              confidence: 1,
+              verification_status: "confirmed",
+              location: { path: "jobs.py", start_line: 42 }
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(screen.getByRole("tab", { name: /findings/i })).toHaveAttribute("aria-selected", "true");
+    const focused = screen.getByRole("article", { current: true });
+    expect(focused).toHaveTextContent("Focused command injection");
+    expect(focused).toHaveFocus();
+  });
+
   it("shows agent-led modes, gates, plans, budgets, checkpoints, and degradation", () => {
     render(
       <RunDetailTabs

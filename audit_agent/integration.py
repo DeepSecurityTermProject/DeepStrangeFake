@@ -256,6 +256,12 @@ def _apply_env_overrides(config: AuditConfig, env: dict[str, str]) -> None:
         config.llm.max_tokens = int(env["AUDIT_AGENT_LLM_MAX_TOKENS"])
     if "AUDIT_AGENT_LLM_TOKEN_BUDGET" in env:
         config.llm.token_budget = int(env["AUDIT_AGENT_LLM_TOKEN_BUDGET"])
+    if "AUDIT_AGENT_INVESTIGATION_TOKEN_BUDGET" in env:
+        investigation_token_budget = int(env["AUDIT_AGENT_INVESTIGATION_TOKEN_BUDGET"])
+        config.investigation.token_budget = investigation_token_budget
+        config.investigation.__post_init__()
+        if "AUDIT_AGENT_LLM_TOKEN_BUDGET" not in env:
+            config.llm.token_budget = investigation_token_budget
     if "AUDIT_AGENT_CVE_MCP_COMMAND" in env:
         config.mcp.command = _split_command(env["AUDIT_AGENT_CVE_MCP_COMMAND"])
     else:

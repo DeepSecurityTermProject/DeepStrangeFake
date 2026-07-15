@@ -32,11 +32,13 @@ describeSmoke("App local smoke", () => {
       </MemoryRouter>
     );
 
-    await userEvent.click(await screen.findByLabelText(/runtime/i));
-    await userEvent.click(screen.getByRole("button", { name: /create scan/i }));
+    await userEvent.type(await screen.findByLabelText(/server-local absolute path/i), "fixtures/integration_smoke");
+    await userEvent.click(screen.getByRole("button", { name: /run preflight/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /configure scan/i }));
+    await userEvent.click(screen.getByRole("button", { name: /launch audit/i }));
 
     await waitFor(
-      () => expect(screen.getByText(/artifacts loaded after terminal status/i)).toBeInTheDocument(),
+      () => expect(screen.getByRole("heading", { name: /report and replay/i })).toBeInTheDocument(),
       { timeout: 30000 }
     );
     expect(screen.getByText(/validated/i)).toBeInTheDocument();
